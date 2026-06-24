@@ -66,3 +66,4 @@ test_file/
 
 # 会话/缓存数据
 .remember/
+test_upload/
