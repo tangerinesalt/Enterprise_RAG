@@ -1,0 +1,68 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# --- Virtual Environment ---
+.venv/
+venv/
+env/
+*.venv
+
+# --- IDE ---
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Runtime Data ---
+logs/
+uploads/*
+!uploads/.gitkeep
+storage/documents/*
+!storage/documents/.gitkeep
+storage/vector_db/*
+!storage/vector_db/.gitkeep
+storage/indices/*
+!storage/indices/.gitkeep
+data/
+
+# --- Environment & Secrets ---
+.env
+*.env.local
+*.key
+*.pem
+service-account*.json
+
+# --- OS ---
+Thumbs.db
+.DS_Store
+
+# --- Project Specific ---
+# 模型缓存（下载的 embedding 模型等）
+models/
+
+# 知识库运行时数据
+kb/
+
+# ChromaDB 运行时数据
+rag_demo_db*/
+
+# 测试文件（大 PDF 等）
+test_file/
+
+# 会话/缓存数据
+.remember/

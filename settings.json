@@ -1,0 +1,7 @@
+{
+  "env": {
+    "ES_URL": "http://127.0.0.1:11434/",
+    "ES_MODEL": "qwen3.5:9b",
+    "ES_TOKEN": "ollama"
+  }
+}
