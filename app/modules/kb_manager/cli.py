@@ -1,19 +1,23 @@
 """
-CLI — 知识库管理命令行入口。
+CLI — 知识库管理子命令。
 
 用法：
-    python -m app.modules.kb_manager.cli kb create <name>
-    python -m app.modules.kb_manager.cli kb upload <name> <path>
-    python -m app.modules.kb_manager.cli kb index <name> <target|--all>
-    python -m app.modules.kb_manager.cli kb upload-and-index <name> <path>
-    python -m app.modules.kb_manager.cli kb delete <name> <target>
-    python -m app.modules.kb_manager.cli kb reindex <name> <filename>
-    python -m app.modules.kb_manager.cli kb list [name]
+    python -m app.cli kb create <name>
+    python -m app.cli kb upload <name> <path>
+    python -m app.cli kb index <name> <target|--all>
+    python -m app.cli kb upload-and-index <name> <path>
+    python -m app.cli kb delete <name> <target>
+    python -m app.cli kb reindex <name> <filename>
+    python -m app.cli kb list [name]
 """
 
 import argparse
 import os
 import sys
+
+# Windows 控制台 UTF-8 支持
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from app.modules.kb_manager import KnowledgeBase, KnowledgeBaseError
 from app.modules.kb_manager.indexer import Indexer
@@ -21,6 +25,10 @@ from app.modules.kb_manager.indexer import Indexer
 _kb = KnowledgeBase()
 _indexer = Indexer()
 
+
+# ══════════════════════════════════════════════
+# KB 命令
+# ══════════════════════════════════════════════
 
 def cmd_create(args):
     try:
@@ -32,75 +40,56 @@ def cmd_create(args):
 
 
 def cmd_upload(args):
-    """上传文件或文件夹（不自动索引）"""
     try:
         _kb.ensure_exists(args.name)
-
         if not os.path.exists(args.path):
             print(f"[ERROR] 路径不存在: {args.path}")
             sys.exit(1)
-
         if os.path.isfile(args.path):
-            # 上传单个文件
             _kb.copy_file(args.name, args.path)
             filename = os.path.basename(args.path)
             print(f"[OK] 已复制: {filename}")
             print(f"      路径: {_kb.file_path(args.name, filename)}")
             print(f"      提示: 运行 'kb index {args.name} {filename}' 来索引")
-
         elif os.path.isdir(args.path):
-            # 上传文件夹
             files = _kb.upload_folder(args.name, args.path)
             folder_name = os.path.basename(os.path.normpath(args.path))
             print(f"[OK] 已复制文件夹 '{folder_name}'（{len(files)} 个文件）")
             print(f"      提示: 运行 'kb index {args.name} {folder_name}' 来索引")
-
     except KnowledgeBaseError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
 
 
 def cmd_index(args):
-    """索引文件或文件夹"""
     try:
         _kb.ensure_exists(args.name)
-
         if args.all:
-            # 索引所有文件
             print(f"[索引] 正在索引 '{args.name}' 中所有文件...")
             results = _indexer.index_all(args.name)
             _print_index_results(results)
-
         elif _kb.folder_exists(args.name, args.target):
-            # 索引文件夹
             print(f"[索引] 正在索引文件夹 '{args.target}'...")
             results = _indexer.index_folder(args.name, args.target)
             _print_index_results(results)
-
         elif _kb.file_exists(args.name, args.target):
-            # 索引单个文件
             print(f"[索引] 正在索引 '{args.target}'...")
             count = _indexer.index_file(args.name, args.target)
             print(f"[OK] 索引完成: {args.target}（{count} 个块）")
-
         else:
             print(f"[ERROR] '{args.target}' 不存在于知识库 '{args.name}' 中")
             sys.exit(1)
-
     except (KnowledgeBaseError, FileNotFoundError) as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
 
 
 def cmd_upload_and_index(args):
-    """上传+索引一步完成"""
     try:
         _kb.ensure_exists(args.name)
-
         if not os.path.exists(args.path):
             print(f"[ERROR] 路径不存在: {args.path}")
             sys.exit(1)
-
         if os.path.isfile(args.path):
             _kb.copy_file(args.name, args.path)
             filename = os.path.basename(args.path)
@@ -108,7 +97,6 @@ def cmd_upload_and_index(args):
             print(f"[索引] 正在索引...")
             count = _indexer.index_file(args.name, filename)
             print(f"[OK] 上传并索引完成: {filename}（{count} 个块）")
-
         elif os.path.isdir(args.path):
             folder_name = os.path.basename(os.path.normpath(args.path))
             files = _kb.upload_folder(args.name, args.path)
@@ -116,26 +104,19 @@ def cmd_upload_and_index(args):
             print(f"[索引] 正在索引文件夹...")
             results = _indexer.index_folder(args.name, folder_name)
             _print_index_results(results)
-
     except (KnowledgeBaseError, FileNotFoundError) as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
 
 
 def cmd_delete(args):
-    """删除文件、文件夹或整个知识库"""
     try:
         if args.target is None:
-            # 删除整个知识库
-            name = args.name
-            _kb.destroy(name)
-            print(f"[OK] 已删除知识库 '{name}'")
+            _kb.destroy(args.name)
+            print(f"[OK] 已删除知识库 '{args.name}'")
             return
-
         _kb.ensure_exists(args.name)
-
         if _kb.folder_exists(args.name, args.target):
-            # 删除文件夹
             files = _kb.list_folder_files(args.name, args.target)
             vec_total = 0
             for rel_path in files:
@@ -145,17 +126,13 @@ def cmd_delete(args):
             _kb.delete_folder(args.name, args.target)
             print(f"[OK] 已删除文件夹 '{args.target}'"
                   f"（{len(files)} 个文件，{vec_total} 个向量）")
-
         elif _kb.file_exists(args.name, args.target):
-            # 删除单个文件
             deleted = _indexer.delete_vectors(args.name, args.target)
             _kb.remove_file(args.name, args.target)
             print(f"[OK] 已删除: {args.target}（移除了 {deleted} 个向量）")
-
         else:
             print(f"[ERROR] '{args.target}' 不存在于知识库 '{args.name}' 中")
             sys.exit(1)
-
     except KnowledgeBaseError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
@@ -187,9 +164,9 @@ def cmd_list(args):
             folders = [i for i in items if i["type"] == "folder"]
             files = [i for i in items if i["type"] == "file"]
             for f in folders:
-                print(f"  📁 {f['name']:38s} {f['size_str']:>8s}")
+                print(f"  [目录] {f['name']:38s} {f['size_str']:>8s}")
             for f in files:
-                print(f"  📄 {f['name']:38s} {f['size_str']:>8s}")
+                print(f"  [文件] {f['name']:38s} {f['size_str']:>8s}")
             print(f"{'='*50}")
             total_folders = len(folders)
             total_files = len(files)
@@ -225,7 +202,6 @@ def cmd_list(args):
 
 
 def _print_index_results(results: dict):
-    """打印索引结果汇总"""
     ok = sum(1 for v in results.values() if isinstance(v, int))
     err = sum(1 for v in results.values() if isinstance(v, str))
     total_chunks = sum(v for v in results.values() if isinstance(v, int))
@@ -237,75 +213,72 @@ def _print_index_results(results: dict):
                 print(f"       - {name}: {err_msg}")
 
 
+# ══════════════════════════════════════════════
+# 主入口
+# ══════════════════════════════════════════════
+
 def main():
     parser = argparse.ArgumentParser(
-        description="RAG V — 知识库管理工具",
+        description="知识库管理",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  python -m app.modules.kb_manager.cli kb create my-docs
-  python -m app.modules.kb_manager.cli kb upload my-docs report.pdf
-  python -m app.modules.kb_manager.cli kb upload my-docs ./docs/
-  python -m app.modules.kb_manager.cli kb index my-docs report.pdf
-  python -m app.modules.kb_manager.cli kb index my-docs ./docs/
-  python -m app.modules.kb_manager.cli kb index my-docs --all
-  python -m app.modules.kb_manager.cli kb upload-and-index my-docs report.pdf
-  python -m app.modules.kb_manager.cli kb delete my-docs               # 删知识库
-  python -m app.modules.kb_manager.cli kb delete my-docs report.pdf    # 删文件
-  python -m app.modules.kb_manager.cli kb delete my-docs my-folder     # 删文件夹
-  python -m app.modules.kb_manager.cli kb reindex my-docs report.pdf
-  python -m app.modules.kb_manager.cli kb list my-docs
-  python -m app.modules.kb_manager.cli kb list
+用法说明:
+  kb create <name>                             创建知识库
+  kb upload <name> <path>                      上传文件或文件夹（不索引）
+  kb upload-and-index <name> <path>            上传并自动索引
+  kb index <name> <target>                     索引文件或文件夹
+  kb index <name> --all                        索引所有文件
+  kb delete <name>                             删除知识库
+  kb delete <name> <target>                    删除文件或文件夹
+  kb reindex <name> <filename>                 重新索引
+  kb list                                      列出所有知识库
+  kb list <name>                               列出库内文件/文件夹
         """,
     )
 
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    # kb 命令组
-    kb_parser = sub.add_parser("kb", help="知识库管理")
-    kb_sub = kb_parser.add_subparsers(dest="action", required=True)
+    sub = parser.add_subparsers(dest="action", required=True)
 
     # kb create
-    p_create = kb_sub.add_parser("create", help="创建知识库")
-    p_create.add_argument("name", help="知识库名称")
-    p_create.set_defaults(func=cmd_create)
+    p = sub.add_parser("create", help="创建知识库")
+    p.add_argument("name", help="知识库名称")
+    p.set_defaults(func=cmd_create)
 
-    # kb upload（仅复制，不索引）
-    p_upload = kb_sub.add_parser("upload", help="上传文件或文件夹（不自动索引）")
-    p_upload.add_argument("name", help="知识库名称")
-    p_upload.add_argument("path", help="文件或文件夹路径")
-    p_upload.set_defaults(func=cmd_upload)
+    # kb upload
+    p = sub.add_parser("upload", help="上传文件或文件夹（不自动索引）")
+    p.add_argument("name", help="知识库名称")
+    p.add_argument("path", help="文件或文件夹路径")
+    p.set_defaults(func=cmd_upload)
 
-    # kb index（新增）
-    p_index = kb_sub.add_parser("index", help="索引文件/文件夹/全部")
-    p_index.add_argument("name", help="知识库名称")
-    p_index.add_argument("target", nargs="?", default=None, help="文件名或文件夹名")
-    p_index.add_argument("--all", action="store_true", help="索引所有文件")
-    p_index.set_defaults(func=cmd_index)
+    # kb index
+    p = sub.add_parser("index", help="索引文件/文件夹/全部")
+    p.add_argument("name", help="知识库名称")
+    p.add_argument("target", nargs="?", default=None, help="文件名或文件夹名")
+    p.add_argument("--all", action="store_true", help="索引所有文件")
+    p.set_defaults(func=cmd_index)
 
-    # kb upload-and-index（新增）
-    p_ui = kb_sub.add_parser("upload-and-index", help="上传并索引（一步完成）")
-    p_ui.add_argument("name", help="知识库名称")
-    p_ui.add_argument("path", help="文件或文件夹路径")
-    p_ui.set_defaults(func=cmd_upload_and_index)
+    # kb upload-and-index
+    p = sub.add_parser("upload-and-index", help="上传并索引（一步完成）")
+    p.add_argument("name", help="知识库名称")
+    p.add_argument("path", help="文件或文件夹路径")
+    p.set_defaults(func=cmd_upload_and_index)
 
     # kb delete
-    p_delete = kb_sub.add_parser("delete", help="删除知识库、文件或文件夹")
-    p_delete.add_argument("name", help="知识库名称")
-    p_delete.add_argument("target", nargs="?", default=None,
-                          help="文件名或文件夹名（省略时删除整个知识库）")
-    p_delete.set_defaults(func=cmd_delete)
+    p = sub.add_parser("delete", help="删除知识库、文件或文件夹")
+    p.add_argument("name", help="知识库名称")
+    p.add_argument("target", nargs="?", default=None,
+                   help="文件名或文件夹名（省略时删除整个知识库）")
+    p.set_defaults(func=cmd_delete)
 
     # kb reindex
-    p_reindex = kb_sub.add_parser("reindex", help="重新索引文件")
-    p_reindex.add_argument("name", help="知识库名称")
-    p_reindex.add_argument("filename", help="文件名")
-    p_reindex.set_defaults(func=cmd_reindex)
+    p = sub.add_parser("reindex", help="重新索引文件")
+    p.add_argument("name", help="知识库名称")
+    p.add_argument("filename", help="文件名")
+    p.set_defaults(func=cmd_reindex)
 
     # kb list
-    p_list = kb_sub.add_parser("list", help="列出知识库或内容")
-    p_list.add_argument("name", nargs="?", default=None, help="知识库名称（可选）")
-    p_list.set_defaults(func=cmd_list)
+    p = sub.add_parser("list", help="列出知识库或内容")
+    p.add_argument("name", nargs="?", default=None, help="知识库名称（可选）")
+    p.set_defaults(func=cmd_list)
 
     args = parser.parse_args()
     args.func(args)

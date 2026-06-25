@@ -67,3 +67,6 @@ test_file/
 # 会话/缓存数据
 .remember/
 test_upload/
+
+# 会话运行时数据
+sessions/
