@@ -170,6 +170,30 @@ class SessionManager:
         config["active_chat"] = chat_file
         self._save_config(name, config)
 
+    # ── 获取聊天记录 ───────────────────────
+
+    def get_messages(self, name: str, chat_file: str) -> list[dict]:
+        """获取指定聊天文件的全部消息记录。"""
+        self._ensure_exists(name)
+        chat_path = os.path.join(self.chats_dir(name), chat_file)
+        if not os.path.isfile(chat_path):
+            raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+
+        store = SimpleChatStore.from_persist_path(chat_path)
+        keys = store.get_keys()
+        if not keys:
+            return []
+
+        messages = store.get_messages(keys[0])
+        return [
+            {
+                "role": str(m.role),
+                "content": m.content,
+                "additional_kwargs": m.additional_kwargs,
+            }
+            for m in messages
+        ]
+
     # ── 聊天核心 ───────────────────────────
 
     def chat(self, name: str, query: str, chat_file: str = None) -> dict:

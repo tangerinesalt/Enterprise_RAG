@@ -113,3 +113,13 @@ def list_chats(name: str):
         return _ok({"name": name, "chats": chats})
     except SessionError as e:
         return _err(str(e), 404)
+
+
+@router.get("/{name}/chats/{chat_file}")
+def get_chat_messages(name: str, chat_file: str):
+    """获取指定聊天的消息记录"""
+    try:
+        messages = _session.get_messages(name, chat_file)
+        return _ok({"name": name, "chat_file": chat_file, "messages": messages})
+    except SessionError as e:
+        return _err(str(e), 404)

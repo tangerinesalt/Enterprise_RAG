@@ -71,7 +71,22 @@ def cmd_info(args):
 
 def cmd_list(args):
     try:
-        if args.name:
+        if args.chat_file:
+            # 查看指定聊天的消息记录
+            msgs = _session.get_messages(args.name, args.chat_file)
+            if not msgs:
+                print(f"聊天 '{args.chat_file}' 中没有消息")
+                return
+            print(f"\n聊天: {args.chat_file} ({len(msgs)} 条消息)")
+            print(f"{'='*50}")
+            for m in msgs:
+                role = "👤 用户" if m["role"] == "user" else "🤖 助手"
+                print(f"\n[{role}]")
+                print("-" * 40)
+                print(m["content"][:500])
+                if len(m["content"]) > 500:
+                    print("...")
+        elif args.name:
             chats = _session.list_chats(args.name)
             if not chats:
                 print(f"会话 '{args.name}' 中没有聊天记录")
@@ -180,8 +195,9 @@ def main():
     p.add_argument("name", help="会话名称")
     p.set_defaults(func=cmd_info)
 
-    p = sub.add_parser("list", help="列出所有会话，或指定会话的聊天文件列表")
-    p.add_argument("name", nargs="?", default=None, help="会话名称（可选，省略时列所有会话）")
+    p = sub.add_parser("list", help="列出会话/聊天文件/聊天消息")
+    p.add_argument("name", nargs="?", default=None, help="会话名称（可选）")
+    p.add_argument("chat_file", nargs="?", default=None, help="聊天文件名（可选，查看消息内容）")
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser("new", help="在会话中创建一条新的聊天记录")
