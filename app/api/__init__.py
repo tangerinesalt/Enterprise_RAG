@@ -1,1 +1,1 @@
-"""API 路由层 — 处理 HTTP 请求/响应，调用 core 层业务逻辑。"""
+"""REST API — FastAPI 应用。"""
