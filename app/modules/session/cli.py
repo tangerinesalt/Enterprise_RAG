@@ -5,7 +5,7 @@ CLI — 会话与聊天管理子命令。
     python -m app.cli session create <name>
     python -m app.cli session bind <name> <kb>
     python -m app.cli session chat <name> [--file <f>] "<query>"
-    python -m app.cli session list [name]
+    python -m app.cli session list [name] [chat_file]
     python -m app.cli session info <name>
     python -m app.cli session new <name>
     python -m app.cli session select <name> <chat_file>
@@ -164,7 +164,8 @@ def main():
   session bind my-session my-docs             为会话绑定知识库
   session info my-session                     查看会话详情
   session list                                列出所有会话
-  session list my-session                     列出会话的聊天记录
+  session list my-session                     列出会话的聊天文件
+  session list my-session 2026_06_25.json     查看聊天消息内容
   session new my-session                      在会话中新建一条聊天
   session select my-session 2026_06_25.json   切换到指定聊天
   session delete my-session                   删除整个会话
