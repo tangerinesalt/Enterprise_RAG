@@ -39,3 +39,8 @@ KB_ROOT = str((_PROJECT_ROOT / "kb").resolve())
 
 # OCR
 ENABLE_OCR_FALLBACK = True
+
+# 分块策略
+CHUNK_SIZE = 512
+CHUNK_OVERLAP = 128
+CHUNK_PARAGRAPH_SEPARATOR = "\n\n"

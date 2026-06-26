@@ -21,6 +21,7 @@ from llama_index.readers.file import PDFReader
 from config.settings import ENABLE_OCR_FALLBACK
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
+from app.modules.kb_manager.chunker import chunk_documents
 
 
 # ── 全局初始化（一次配好 Embedding + LLM）──
@@ -150,8 +151,12 @@ class Indexer:
         if not documents:
             return 0
 
-        index = VectorStoreIndex.from_documents(
-            documents,
+        # 自定义组合分块：页面类型检测 → SentenceSplitter → metadata 注入
+        nodes = chunk_documents(documents)
+
+        # 从 nodes 构建索引
+        index = VectorStoreIndex(
+            nodes=nodes,
             storage_context=storage_context,
             show_progress=True,
         )
