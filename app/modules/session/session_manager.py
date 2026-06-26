@@ -15,13 +15,18 @@ from pathlib import Path
 
 import chromadb
 from llama_index.core import VectorStoreIndex
+from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.core.llms import ChatMessage, MessageRole
+from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
+from app.modules.retrieval import build_retriever
 
+
+# ── 中文分词器（用于 BM25）─────────────────
 # 会话根目录
 SESSION_ROOT = str((Path(__file__).resolve().parent.parent.parent.parent / "sessions").resolve())
 
@@ -272,7 +277,9 @@ class SessionManager:
             store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
 
             # 流式检索 + 生成
-            query_engine = index.as_query_engine(similarity_top_k=5, streaming=True)
+            rerank = SentenceTransformerRerank(top_n=3)
+            retriever = build_retriever(index, kb_name)
+            query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank],streaming=True)
             t0 = _t()
             response = query_engine.query(query)
             print(f"[TIMING] retrieval: {_t()-t0:.3f}s")
@@ -378,7 +385,9 @@ class SessionManager:
 
         # 阶段 2：检索 + 生成
         t0 = _t()
-        query_engine = index.as_query_engine(similarity_top_k=5)
+        retriever = build_retriever(index, kb_name)
+        rerank = SentenceTransformerRerank(top_n=3)
+        query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank])
         response = query_engine.query(query)
         print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
 
