@@ -70,3 +70,6 @@ test_upload/
 
 # 会话运行时数据
 sessions/
+
+# mcp调试数据
+.playwright-mcp/
