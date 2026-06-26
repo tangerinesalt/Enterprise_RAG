@@ -187,7 +187,7 @@ class SessionManager:
         messages = store.get_messages(keys[0])
         return [
             {
-                "role": str(m.role),
+                "role": m.role.value if hasattr(m.role, 'value') else str(m.role),
                 "content": m.content,
                 "additional_kwargs": m.additional_kwargs,
             }
