@@ -298,7 +298,14 @@ class SessionManager:
                     })
 
             # 持久化
-            store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=answer))
+            store.add_message(
+                name,
+                ChatMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=answer,
+                    additional_kwargs={"sources": sources} if sources else None,
+                ),
+            )
             t0 = _t()
             store.persist(chat_path)
             print(f"[TIMING] persist: {_t()-t0:.3f}s")
