@@ -9,18 +9,16 @@ SessionManager — 会话管理核心类。
 import os
 import json
 import shutil
+from threading import Lock
 from datetime import datetime
 from pathlib import Path
 
 import chromadb
-from llama_index.core import (
-    VectorStoreIndex, Settings, StorageContext,
-)
+from llama_index.core import VectorStoreIndex
 from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from config.settings import KB_ROOT, EMBED_MODEL, LLM_MODEL
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 
@@ -28,6 +26,22 @@ from app.modules.kb_manager import KnowledgeBase
 SESSION_ROOT = str((Path(__file__).resolve().parent.parent.parent.parent / "sessions").resolve())
 
 _kb = KnowledgeBase()
+_models_initialized = False
+_models_lock = Lock()
+
+
+def _ensure_models_initialized() -> bool:
+    """Initialize LlamaIndex global models once per Python process."""
+    global _models_initialized
+    if _models_initialized:
+        return False
+
+    with _models_lock:
+        if _models_initialized:
+            return False
+        init_models()
+        _models_initialized = True
+        return True
 
 
 class SessionError(Exception):
@@ -194,6 +208,110 @@ class SessionManager:
             for m in messages
         ]
 
+    # ── 流式聊天核心 ───────────────────────
+
+    def chat_stream(self, name: str, query: str, chat_file: str = None):
+        """
+        流式聊天 Generator。
+
+        逐 token 生成 SSE 事件 dict：
+            {"type": "start",   "chat_file": "..."}
+            {"type": "token",   "token": "..."}
+            {"type": "sources", "sources": [...]}
+            {"type": "done",    "chat_file": "..."}
+            {"type": "error",   "message": "..."}
+        """
+        import time as _time
+        _t = _time.time
+
+        try:
+            self._ensure_exists(name)
+            config = self._load_config(name)
+
+            # 确定聊天文件
+            if chat_file:
+                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                if not os.path.isfile(chat_path):
+                    raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+            else:
+                chat_file = self.new_chat(name)
+                config = self._load_config(name)
+                chat_path = os.path.join(self.chats_dir(name), chat_file)
+
+            yield {"type": "start", "chat_file": chat_file}
+
+            # 检查绑定的知识库
+            kb_name = config.get("kb_name")
+            if not kb_name:
+                raise SessionError(f"会话 '{name}' 未绑定知识库")
+            if not _kb.exists(kb_name):
+                raise SessionError(f"知识库 '{kb_name}' 不存在")
+
+            # 加载历史 + 初始化模型
+            t0 = _t()
+            store = SimpleChatStore.from_persist_path(chat_path)
+            did_init = _ensure_models_initialized()
+            init_state = "init" if did_init else "cached"
+            print(f"[TIMING] load_history+models_{init_state}: {_t()-t0:.3f}s")
+
+            # 加载 ChromaDB
+            db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
+            try:
+                chroma_collection = db.get_collection("kb_index")
+            except Exception:
+                raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据")
+
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+            index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+
+            vector_count = chroma_collection.count()
+            if vector_count == 0:
+                raise SessionError(f"知识库 '{kb_name}' 中没有向量数据")
+
+            # 追加用户消息
+            store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
+
+            # 流式检索 + 生成
+            query_engine = index.as_query_engine(similarity_top_k=5, streaming=True)
+            t0 = _t()
+            response = query_engine.query(query)
+            print(f"[TIMING] retrieval: {_t()-t0:.3f}s")
+
+            answer_buf = []
+            for chunk in response.response_gen:
+                if chunk:
+                    answer_buf.append(chunk)
+                    yield {"type": "token", "token": chunk}
+                    t0 = _t()
+
+            answer = "".join(answer_buf)
+            print(f"[TIMING] generation: {_t()-t0:.3f}s")
+
+            # 提取来源
+            sources = []
+            if hasattr(response, "source_nodes") and response.source_nodes:
+                for node in response.source_nodes:
+                    score = node.score if hasattr(node, "score") else None
+                    sources.append({
+                        "text": node.text.strip()[:300],
+                        "score": round(score, 4) if isinstance(score, float) else None,
+                    })
+
+            # 持久化
+            store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=answer))
+            t0 = _t()
+            store.persist(chat_path)
+            print(f"[TIMING] persist: {_t()-t0:.3f}s")
+
+            yield {"type": "sources", "sources": sources}
+            yield {"type": "done", "chat_file": chat_file}
+
+        except SessionError as e:
+            yield {"type": "error", "message": str(e)}
+        except Exception as e:
+            print(f"\033[91m[ERROR] chat_stream: {e}\033[0m")
+            yield {"type": "error", "message": f"内部错误: {e}"}
+
     # ── 聊天核心 ───────────────────────────
 
     def chat(self, name: str, query: str, chat_file: str = None) -> dict:
@@ -225,11 +343,14 @@ class SessionManager:
         if not _kb.exists(kb_name):
             raise SessionError(f"知识库 '{kb_name}' 不存在")
 
-        # 加载聊天历史
+        # 阶段 1：加载历史 + 初始化模型
+        import time as _time
+        _t = _time.time
+        t0 = _t()
         store = SimpleChatStore.from_persist_path(chat_path)
-
-        # 初始化模型
-        init_models()
+        did_init = _ensure_models_initialized()
+        init_state = "init" if did_init else "cached"
+        print(f"[TIMING] load_history+models_{init_state}: {_t()-t0:.3f}s")
 
         # 加载 ChromaDB
         db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
@@ -248,9 +369,11 @@ class SessionManager:
         # 追加用户消息
         store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
 
-        # 检索 + 生成
+        # 阶段 2：检索 + 生成
+        t0 = _t()
         query_engine = index.as_query_engine(similarity_top_k=5)
         response = query_engine.query(query)
+        print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
 
         # 提取来源
         sources = []
@@ -276,8 +399,10 @@ class SessionManager:
             ChatMessage(role=MessageRole.ASSISTANT, content=answer_with_sources),
         )
 
-        # 持久化
+        # 阶段 3：持久化
+        t0 = _t()
         store.persist(chat_path)
+        print(f"[TIMING] persist: {_t()-t0:.3f}s")
 
         return {
             "query": query,

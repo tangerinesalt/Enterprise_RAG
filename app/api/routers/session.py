@@ -1,7 +1,9 @@
 """会话 REST API。"""
 
+import json
+
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas import (
     SessionCreateRequest,
@@ -11,6 +13,7 @@ from app.api.schemas import (
     SessionChatRequest,
 )
 from app.modules.session import SessionManager, SessionError
+from app.utils.timing import timed
 
 router = APIRouter()
 
@@ -92,6 +95,7 @@ def select_chat(body: SessionSelectChatRequest):
 
 
 @router.post("/chat")
+@timed("session_chat", warn=2.0, error=10.0)
 def chat(body: SessionChatRequest):
     """聊天：检索 → 生成 → 持久化"""
     try:
@@ -103,6 +107,27 @@ def chat(body: SessionChatRequest):
         })
     except SessionError as e:
         return _err(str(e))
+
+
+@router.post("/chat/stream")
+async def chat_stream(body: SessionChatRequest):
+    """聊天流式接口（SSE）。逐 token 推送 LLM 生成结果。"""
+
+    def generate():
+        for event in _session.chat_stream(body.name, body.query, body.chat_file):
+            etype = event["type"]
+            if etype == "error":
+                yield f"event: error\ndata: {json.dumps({'message': event['message']})}\n\n"
+            elif etype == "start":
+                yield f"event: start\ndata: {json.dumps({'chat_file': event['chat_file']})}\n\n"
+            elif etype == "token":
+                yield f"event: token\ndata: {json.dumps({'token': event['token']})}\n\n"
+            elif etype == "sources":
+                yield f"event: sources\ndata: {json.dumps({'sources': event['sources']})}\n\n"
+            elif etype == "done":
+                yield f"event: done\ndata: {json.dumps({'chat_file': event['chat_file']})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/{name}/chats")
