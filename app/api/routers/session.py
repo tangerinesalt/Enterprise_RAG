@@ -130,6 +130,16 @@ async def chat_stream(body: SessionChatRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@router.delete("/{name}/chats/{chat_file}")
+def delete_chat(name: str, chat_file: str):
+    """删除会话中的单条聊天"""
+    try:
+        _session.delete(name, chat_file)
+        return _ok({"name": name, "chat_file": chat_file})
+    except SessionError as e:
+        return _err(str(e), 404)
+
+
 @router.get("/{name}/chats")
 def list_chats(name: str):
     """列出会话的聊天文件"""

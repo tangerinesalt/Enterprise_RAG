@@ -161,6 +161,8 @@ export const sessionApi = {
       }
     }).catch((err) => onError?.(String(err)));
   },
+  deleteChat: (name: string, chatFile: string) =>
+    req<{ name: string; chat_file: string }>(`/session/${name}/chats/${chatFile}`, { method: 'DELETE' }),
   listChats: (name: string) => req<{ name: string; chats: ChatFile[] }>(`/session/${name}/chats`),
   getMessages: (name: string, chatFile: string) =>
     req<{ name: string; chat_file: string; messages: { role: string; content: string; additional_kwargs?: { sources?: { text: string; score: number }[] } }[] }>(

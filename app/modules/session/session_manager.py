@@ -301,7 +301,7 @@ class SessionManager:
                     score = node.score if hasattr(node, "score") else None
                     sources.append({
                         "text": node.text.strip()[:300],
-                        "score": round(score, 4) if isinstance(score, float) else None,
+                        "score": round(float(score), 4) if score is not None else None,
                     })
 
             # 持久化
@@ -398,7 +398,7 @@ class SessionManager:
                 score = node.score if hasattr(node, "score") else None
                 sources.append({
                     "text": node.text.strip()[:300],
-                    "score": round(score, 4) if isinstance(score, float) else None,
+                    "score": round(float(score), 4) if score is not None else None,
                 })
 
         answer = str(response)

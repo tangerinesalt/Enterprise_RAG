@@ -155,13 +155,28 @@ export default function SessionChat() {
 
         <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>聊天列表</div>
         {chats.map(c => (
-          <div key={c.file} onClick={() => setActiveChat(c.file)}
-            style={{
-              padding: '6px 8px', cursor: 'pointer', borderRadius: 4, fontSize: 13,
-              background: activeChat === c.file ? '#eff6ff' : 'transparent',
-              fontWeight: activeChat === c.file ? 500 : 400,
-            }}>
-            {c.file}
+          <div key={c.file} style={{
+            display: 'flex', alignItems: 'center', borderRadius: 4, fontSize: 13,
+            background: activeChat === c.file ? '#eff6ff' : 'transparent',
+            fontWeight: activeChat === c.file ? 500 : 400,
+          }}>
+            <div onClick={() => setActiveChat(c.file)}
+              style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {c.file}
+            </div>
+            <button onClick={async (e) => {
+              e.stopPropagation();
+              if (!confirm(`确定删除聊天「${c.file}」？`)) return;
+              if (!name) return;
+              await sessionApi.deleteChat(name, c.file);
+              load();
+              if (activeChat === c.file) {
+                const remaining = chats.filter(x => x.file !== c.file);
+                setActiveChat(remaining.length > 0 ? remaining[0].file : null);
+                if (remaining.length === 0) setMessages([]);
+              }
+            }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontSize: 14, color: '#9ca3af' }}
+              title="删除聊天">🗑️</button>
           </div>
         ))}
       </div>
