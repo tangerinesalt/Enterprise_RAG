@@ -52,7 +52,26 @@ score = vector_weight * 1/(k+vec_rank+1) + bm25_weight * 1/(k+bm25_rank+1)
 
 ### 4. 配置入口
 
-`settings.json` 新增 `RETRIEVER_MODE` 项，或从会话 config 读取（沿用 session-retrieval-params 已有的 `top_k`/`top_n`，新增 `retriever_mode` 字段）。
+新增 `retriever_mode` 字段到会话 `config.json`，与已有的 `top_k`/`top_n` 并列。默认 `"hybrid"`，可选 `"vector-only"`。
+
+```json
+// sessions/<name>/config.json
+{
+  "kb_name": "my_kb",
+  "top_k": 8,
+  "top_n": 5,
+  "retriever_mode": "hybrid"    // "hybrid" | "vector-only"
+}
+```
+
+沿用已有的 CLI `session config` 子命令和 API `PATCH /api/session/{name}/config`，无需新增路由：
+
+```bash
+python -m app.cli session config my-session --set retriever_mode=vector-only
+```
+```http
+PATCH /api/session/my-session/config  {"retriever_mode": "vector-only"}
+```
 
 ## Risks / Trade-offs
 

@@ -56,6 +56,25 @@ The system SHALL apply the session's `top_k` value to vector retrieval, BM25 ret
 - **WHEN** user sends `POST /api/session/chat/stream` with session config `top_k=12, top_n=5`
 - **THEN** the same parameter propagation applies as in non-stream chat
 
+### Requirement: RRF fusion SHALL use weighted scoring
+
+The RRF fusion SHALL apply vector_weight=0.7 and bm25_weight=0.3 instead of equal weighting.
+
+#### Scenario: Weighted RRF preserves vector ranking
+- **WHEN** vector search ranks correct answer at #3 and BM25 ranks it at #10
+- **THEN** weighted RRF rank is #3 (unchanged from vector), not degraded
+- **THEN** the RRF score spread is at least 5x wider than equal-weight RRF
+
+### Requirement: Retrieval mode SHALL support vector-only
+
+The session config SHALL support `retriever_mode` field: `"hybrid"` (default) or `"vector-only"`.
+
+#### Scenario: Vector-only mode
+- **WHEN** session config has `"retriever_mode": "vector-only"`
+- **THEN** `build_retriever` skips BM25 construction and RRF fusion
+- **THEN** only VectorIndexRetriever (with threshold filter) is used
+- **THEN** the reranker is applied directly on vector results
+
 ## REMOVED Requirements
 
 ### Requirement: System SHALL retrieve and generate answers (hardcoded top-5)

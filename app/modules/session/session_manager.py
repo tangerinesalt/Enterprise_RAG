@@ -59,6 +59,7 @@ class SessionManager:
     # 检索参数默认值
     DEFAULT_TOP_K = 8
     DEFAULT_TOP_N = 5
+    DEFAULT_RETRIEVER_MODE = "hybrid"
 
     # ── 路径 ─────────────────────────────────
 
@@ -83,6 +84,7 @@ class SessionManager:
             "active_chat": None,
             "top_k": self.DEFAULT_TOP_K,
             "top_n": self.DEFAULT_TOP_N,
+            "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
         })
         return path
 
@@ -290,8 +292,9 @@ class SessionManager:
             # 流式检索 + 生成
             top_k = config.get("top_k", self.DEFAULT_TOP_K)
             top_n = config.get("top_n", self.DEFAULT_TOP_N)
+            retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
             rerank = SentenceTransformerRerank(top_n=top_n)
-            retriever = build_retriever(index, kb_name, top_k=top_k)
+            retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
             query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank],streaming=True)
             t0 = _t()
             response = query_engine.query(query)
@@ -400,7 +403,8 @@ class SessionManager:
         t0 = _t()
         top_k = config.get("top_k", self.DEFAULT_TOP_K)
         top_n = config.get("top_n", self.DEFAULT_TOP_N)
-        retriever = build_retriever(index, kb_name, top_k=top_k)
+        retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
+        retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
         rerank = SentenceTransformerRerank(top_n=top_n)
         query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank])
         response = query_engine.query(query)
@@ -460,6 +464,11 @@ class SessionManager:
                 if not isinstance(value, int) or value < 1:
                     raise SessionError(f"{key} MUST be >= 1, got {value}")
                 cfg[key] = value
+            elif key == "retriever_mode":
+                if value not in ("hybrid", "vector-only"):
+                    raise SessionError(
+                        f"retriever_mode MUST be 'hybrid' or 'vector-only', got '{value}'")
+                cfg[key] = value
             else:
                 raise SessionError(f"不支持的配置项: {key}")
 
@@ -472,7 +481,8 @@ class SessionManager:
         path = self.config_path(name)
         if not os.path.isfile(path):
             return {"kb_name": None, "active_chat": None,
-                    "top_k": self.DEFAULT_TOP_K, "top_n": self.DEFAULT_TOP_N}
+                    "top_k": self.DEFAULT_TOP_K, "top_n": self.DEFAULT_TOP_N,
+                    "retriever_mode": self.DEFAULT_RETRIEVER_MODE}
         with open(path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         # 兼容旧 config：缺失字段用默认值补全
@@ -480,6 +490,8 @@ class SessionManager:
             cfg["top_k"] = self.DEFAULT_TOP_K
         if "top_n" not in cfg:
             cfg["top_n"] = self.DEFAULT_TOP_N
+        if "retriever_mode" not in cfg:
+            cfg["retriever_mode"] = self.DEFAULT_RETRIEVER_MODE
         return cfg
 
     def _save_config(self, name: str, data: dict):
