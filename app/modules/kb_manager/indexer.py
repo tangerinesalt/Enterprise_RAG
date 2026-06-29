@@ -135,6 +135,9 @@ class Indexer:
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"知识库内文件不存在: {file_path}")
 
+        # 先清理同名文件的旧向量，保证幂等
+        self.delete_vectors(kb_name, filename)
+
         db, collection = self._get_chroma_collection(kb_name)
         vector_store = ChromaVectorStore(chroma_collection=collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)

@@ -20,8 +20,11 @@ def chunk_documents(documents: list) -> list:
 
     all_nodes = []
     for doc in documents:
+        # 去除 UTF-8 BOM 字符
+        doc.set_content(doc.text.lstrip("﻿"))
         nodes = parser.get_nodes_from_documents([doc])
         for i, node in enumerate(nodes):
+            node.text = node.text.lstrip("﻿")
             node.metadata["chunk_index"] = i
             node.metadata["total_chunks"] = len(nodes)
             for key in ("file_path", "page_label"):

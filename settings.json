@@ -1,7 +1,7 @@
 {
   "env": {
     "EMBED_URL": "http://127.0.0.1:11434/",
-    "EMBED_MODEL": "qwen3-embedding:4b",
+    "EMBED_MODEL": "bge-m3",
 
     "_LLM_PROVIDER_COMMENT": "可选: ollama (默认), deepseek, openai",
     "LLM_PROVIDER": "ollama",

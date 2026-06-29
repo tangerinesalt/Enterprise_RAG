@@ -23,7 +23,7 @@ _bm25_index_cache: dict[str, BM25Retriever] = {}
 
 
 def _build_bm25_retriever(index, kb_name: str, top_k: int = 5) -> BM25Retriever:
-    """构建（或从缓存取）中文 BM25 检索器。"""
+    """构建（或从缓存取）中文 BM25 检索器。是基于词项频率统计的稀疏检索模型。"""
     if kb_name in _bm25_index_cache:
         return _bm25_index_cache[kb_name]
 
@@ -84,7 +84,7 @@ def _rrf_fusion(
 class _ScoreThresholdRetriever(BaseRetriever):
     """包装 VectorIndexRetriever，按最低分数阈值过滤节点。"""
 
-    def __init__(self, retriever, threshold=0.6):
+    def __init__(self, retriever, threshold=0.2):
         self._retriever = retriever
         self._threshold = threshold
 
@@ -127,7 +127,7 @@ def build_retriever(index, kb_name=None, top_k=5):
             index=index,
             similarity_top_k=top_k,
         ),
-        threshold=0.6,
+        threshold=0.2,
     )
 
     if kb_name:

@@ -313,7 +313,7 @@ class SessionManager:
                 for node in response.source_nodes:
                     score = node.score if hasattr(node, "score") else None
                     sources.append({
-                        "text": node.text.strip()[:300],
+                        "text": node.text.strip(),
                         "score": round(float(score), 4) if score is not None else None,
                     })
 
@@ -412,7 +412,7 @@ class SessionManager:
             for node in response.source_nodes:
                 score = node.score if hasattr(node, "score") else None
                 sources.append({
-                    "text": node.text.strip()[:300],
+                    "text": node.text.strip(),
                     "score": round(float(score), 4) if score is not None else None,
                 })
 

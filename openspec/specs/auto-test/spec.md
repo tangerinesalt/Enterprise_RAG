@@ -23,3 +23,9 @@ The system SHALL provide `test/test_auto.py` that creates test data and verifies
   - `A2-原理.txt` with content answering "什么是A2？"
   - `sub/A3-应用.txt` with content answering "什么是A3？"
   - `sub/A4-实践.txt` with content answering "什么是A4？"
+
+#### Scenario: Retrieval diagnostic runs after indexing
+- **WHEN** indexing completes
+- **THEN** `test_retrieval_diagnostic.py` is called as a subprocess with the test KB and query
+- **THEN** diagnostic output is checked for anomalies E01 and E03
+- **THEN** if either anomaly is detected, a WARNING is printed (test does not fail)

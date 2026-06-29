@@ -1,0 +1,4 @@
+  File "<string>", line 106
+    print(f'{" "*22}  BM25 分数分布: {score_dist[:6]}...{
+                                                    ^
+SyntaxError: '{' was never closed
