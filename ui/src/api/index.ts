@@ -73,6 +73,8 @@ export interface SessionItem {
   name: string;
   kb_name: string | null;
   active_chat: string | null;
+  top_k?: number;
+  top_n?: number;
   total_chats: number;
 }
 
@@ -168,4 +170,8 @@ export const sessionApi = {
     req<{ name: string; chat_file: string; messages: { role: string; content: string; additional_kwargs?: { sources?: { text: string; score: number }[] } }[] }>(
       `/session/${name}/chats/${chatFile}`
     ),
+  updateConfig: (name: string, data: { top_k?: number; top_n?: number }) =>
+    req<{ top_k: number; top_n: number }>(`/session/${name}/config`, {
+      method: 'PATCH', body: JSON.stringify(data),
+    }),
 };

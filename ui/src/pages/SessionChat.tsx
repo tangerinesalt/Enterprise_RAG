@@ -21,6 +21,9 @@ export default function SessionChat() {
   const [loading, setLoading] = useState(false);
   const [showBind, setShowBind] = useState(false);
   const [kbList, setKbList] = useState<KbItem[]>([]);
+  const [topK, setTopK] = useState(8);
+  const [topN, setTopN] = useState(5);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const msgEndRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -38,6 +41,14 @@ export default function SessionChat() {
   };
 
   useEffect(() => { load(); }, [name]);
+
+  useEffect(() => {
+    if (sessionInfo) {
+      setTopK(sessionInfo.top_k ?? 8);
+      setTopN(sessionInfo.top_n ?? 5);
+    }
+  }, [sessionInfo]);
+
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   useEffect(() => {
@@ -64,6 +75,22 @@ export default function SessionChat() {
     setActiveChat(res.chat_file);
     setMessages([]);
     load();
+  };
+
+  const handleSaveConfig = async () => {
+    if (!name) return;
+    if (topK < 1 || topN < 1) {
+      setSaveStatus('error');
+      return;
+    }
+    setSaveStatus('saving');
+    try {
+      await sessionApi.updateConfig(name, { top_k: topK, top_n: topN });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch {
+      setSaveStatus('error');
+    }
   };
 
   const handleSubmit = async () => {
@@ -150,6 +177,36 @@ export default function SessionChat() {
             ))}
           </div>
         )}
+
+        {/* 检索参数编辑区域 */}
+        <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>🔍 检索参数</div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+            <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_k:</label>
+            <input type="number" min={1} value={topK}
+              onChange={e => { setTopK(Number(e.target.value)); setSaveStatus('idle'); }}
+              style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>召回数</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_n:</label>
+            <input type="number" min={1} value={topN}
+              onChange={e => { setTopN(Number(e.target.value)); setSaveStatus('idle'); }}
+              style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>保留数</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={handleSaveConfig} disabled={saveStatus === 'saving'}
+              style={{
+                padding: '3px 10px', fontSize: 12, border: 'none', borderRadius: 3, cursor: 'pointer',
+                background: saveStatus === 'saving' ? '#93c5fd' : '#2563eb', color: '#fff',
+              }}>
+              {saveStatus === 'saving' ? '保存中...' : '💾 保存'}
+            </button>
+            {saveStatus === 'saved' && <span style={{ fontSize: 11, color: '#059669' }}>✓ 已保存</span>}
+            {saveStatus === 'error' && <span style={{ fontSize: 11, color: '#dc2626' }}>保存失败，参数必须 ≥ 1</span>}
+          </div>
+        </div>
 
         <button onClick={handleNewChat} style={{ ...btnPrimary, width: '100%', margin: '12px 0' }}>＋ 新聊天</button>
 

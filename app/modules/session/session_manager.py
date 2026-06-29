@@ -56,6 +56,10 @@ class SessionError(Exception):
 class SessionManager:
     """会话管理"""
 
+    # 检索参数默认值
+    DEFAULT_TOP_K = 8
+    DEFAULT_TOP_N = 5
+
     # ── 路径 ─────────────────────────────────
 
     def session_path(self, name: str) -> str:
@@ -74,7 +78,12 @@ class SessionManager:
         if os.path.exists(path):
             raise SessionError(f"会话 '{name}' 已存在")
         os.makedirs(self.chats_dir(name), exist_ok=True)
-        self._save_config(name, {"kb_name": None, "active_chat": None})
+        self._save_config(name, {
+            "kb_name": None,
+            "active_chat": None,
+            "top_k": self.DEFAULT_TOP_K,
+            "top_n": self.DEFAULT_TOP_N,
+        })
         return path
 
     def delete(self, name: str, chat_file: str = None):
@@ -121,6 +130,8 @@ class SessionManager:
             "name": name,
             "kb_name": config.get("kb_name"),
             "active_chat": config.get("active_chat"),
+            "top_k": config.get("top_k", self.DEFAULT_TOP_K),
+            "top_n": config.get("top_n", self.DEFAULT_TOP_N),
             "total_chats": len(chats),
             "chat_files": chats,
         }
@@ -277,8 +288,10 @@ class SessionManager:
             store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
 
             # 流式检索 + 生成
-            rerank = SentenceTransformerRerank(top_n=3)
-            retriever = build_retriever(index, kb_name)
+            top_k = config.get("top_k", self.DEFAULT_TOP_K)
+            top_n = config.get("top_n", self.DEFAULT_TOP_N)
+            rerank = SentenceTransformerRerank(top_n=top_n)
+            retriever = build_retriever(index, kb_name, top_k=top_k)
             query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank],streaming=True)
             t0 = _t()
             response = query_engine.query(query)
@@ -385,8 +398,10 @@ class SessionManager:
 
         # 阶段 2：检索 + 生成
         t0 = _t()
-        retriever = build_retriever(index, kb_name)
-        rerank = SentenceTransformerRerank(top_n=3)
+        top_k = config.get("top_k", self.DEFAULT_TOP_K)
+        top_n = config.get("top_n", self.DEFAULT_TOP_N)
+        retriever = build_retriever(index, kb_name, top_k=top_k)
+        rerank = SentenceTransformerRerank(top_n=top_n)
         query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank])
         response = query_engine.query(query)
         print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
@@ -428,14 +443,44 @@ class SessionManager:
             "chat_path": chat_path,
         }
 
+    # ── 检索参数管理 ─────────────────────────
+
+    def get_config(self, name: str) -> dict:
+        """获取会话完整配置（含 top_k / top_n）。"""
+        self._ensure_exists(name)
+        return self._load_config(name)
+
+    def update_config(self, name: str, **kwargs) -> dict:
+        """更新会话配置参数。校验通过后持久化，返回完整配置。"""
+        self._ensure_exists(name)
+        cfg = self._load_config(name)
+
+        for key, value in kwargs.items():
+            if key in ("top_k", "top_n"):
+                if not isinstance(value, int) or value < 1:
+                    raise SessionError(f"{key} MUST be >= 1, got {value}")
+                cfg[key] = value
+            else:
+                raise SessionError(f"不支持的配置项: {key}")
+
+        self._save_config(name, cfg)
+        return cfg
+
     # ── 内部方法 ───────────────────────────
 
     def _load_config(self, name: str) -> dict:
         path = self.config_path(name)
         if not os.path.isfile(path):
-            return {"kb_name": None, "active_chat": None}
+            return {"kb_name": None, "active_chat": None,
+                    "top_k": self.DEFAULT_TOP_K, "top_n": self.DEFAULT_TOP_N}
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            cfg = json.load(f)
+        # 兼容旧 config：缺失字段用默认值补全
+        if "top_k" not in cfg:
+            cfg["top_k"] = self.DEFAULT_TOP_K
+        if "top_n" not in cfg:
+            cfg["top_n"] = self.DEFAULT_TOP_N
+        return cfg
 
     def _save_config(self, name: str, data: dict):
         os.makedirs(os.path.dirname(self.config_path(name)), exist_ok=True)

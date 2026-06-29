@@ -11,6 +11,7 @@ from app.api.schemas import (
     SessionNewChatRequest,
     SessionSelectChatRequest,
     SessionChatRequest,
+    SessionConfigUpdateRequest,
 )
 from app.modules.session import SessionManager, SessionError
 from app.utils.timing import timed
@@ -138,6 +139,23 @@ def delete_chat(name: str, chat_file: str):
         return _ok({"name": name, "chat_file": chat_file})
     except SessionError as e:
         return _err(str(e), 404)
+
+
+@router.patch("/{name}/config")
+def update_session_config(name: str, body: SessionConfigUpdateRequest):
+    """更新会话检索参数（top_k / top_n）"""
+    try:
+        kwargs = {}
+        if body.top_k is not None:
+            kwargs["top_k"] = body.top_k
+        if body.top_n is not None:
+            kwargs["top_n"] = body.top_n
+        if not kwargs:
+            return _err("未提供需要更新的参数")
+        cfg = _session.update_config(name, **kwargs)
+        return _ok(cfg)
+    except SessionError as e:
+        return _err(str(e))
 
 
 @router.get("/{name}/chats")

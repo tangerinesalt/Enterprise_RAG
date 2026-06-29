@@ -47,3 +47,7 @@ class SessionChatRequest(BaseModel):
     name: str
     query: str
     chat_file: Optional[str] = None
+
+class SessionConfigUpdateRequest(BaseModel):
+    top_k: Optional[int] = None
+    top_n: Optional[int] = None

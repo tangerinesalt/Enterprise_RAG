@@ -25,6 +25,7 @@ def main():
   app.cli kb list                              列出知识库
   app.cli session create <name>               创建会话
   app.cli session bind <name> <kb>            绑定知识库
+  app.cli session config <name> [--set top_k=N]  查看/修改检索参数
   app.cli session chat <name> "问题"           聊天
   app.cli session list                         列出会话
         """,

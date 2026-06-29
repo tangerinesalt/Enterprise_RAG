@@ -5,6 +5,7 @@ CLI — 会话与聊天管理子命令。
     python -m app.cli session create <name>
     python -m app.cli session bind <name> <kb>
     python -m app.cli session chat <name> [--file <f>] "<query>"
+    python -m app.cli session config <name> [--set top_k=N] [--set top_n=N]
     python -m app.cli session list [name] [chat_file]
     python -m app.cli session info <name>
     python -m app.cli session new <name>
@@ -132,6 +133,35 @@ def cmd_select(args):
         sys.exit(1)
 
 
+def cmd_config(args):
+    """展示或修改会话检索参数。"""
+    try:
+        if args.set:
+            kwargs = {}
+            for kv in args.set:
+                if "=" not in kv:
+                    print(f"[ERROR] 格式错误: '{kv}'，应为 key=value")
+                    sys.exit(1)
+                key, val = kv.split("=", 1)
+                kwargs[key.strip()] = int(val.strip())
+            cfg = _session.update_config(args.name, **kwargs)
+            print(f"[OK] 会话 '{args.name}' 配置已更新")
+        else:
+            cfg = _session.get_config(args.name)
+        print(f"\n会话 '{args.name}' 配置:")
+        print(f"{'='*40}")
+        print(f"  top_k: {cfg.get('top_k', '(未设置)')}")
+        print(f"  top_n: {cfg.get('top_n', '(未设置)')}")
+        print(f"  kb_name: {cfg.get('kb_name') or '(未绑定)'}")
+        print(f"  active_chat: {cfg.get('active_chat') or '(无)'}")
+    except SessionError as e:
+        print(f"[ERROR] {e}")
+        sys.exit(1)
+    except ValueError:
+        print("[ERROR] --set 参数值必须为整数")
+        sys.exit(1)
+
+
 def cmd_chat(args):
     try:
         result = _session.chat(args.name, args.query, args.file)
@@ -209,6 +239,12 @@ def main():
     p.add_argument("name", help="会话名称")
     p.add_argument("chat_file", help="聊天文件名（如 2026_06_25_09_30.json）")
     p.set_defaults(func=cmd_select)
+
+    p = sub.add_parser("config", help="查看或修改会话检索参数 top_k / top_n")
+    p.add_argument("name", help="会话名称")
+    p.add_argument("--set", action="append", default=None,
+                   help="设置参数，格式 key=value（可多次使用，如 --set top_k=10 --set top_n=5）")
+    p.set_defaults(func=cmd_config)
 
     p = sub.add_parser("chat", help="聊天：检索知识库 → LLM 生成 → 写入聊天记录 → 打印")
     p.add_argument("name", help="会话名称")

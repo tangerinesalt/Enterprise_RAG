@@ -22,7 +22,7 @@ def _chinese_tokenizer(text: str) -> list[str]:
 _bm25_index_cache: dict[str, BM25Retriever] = {}
 
 
-def _build_bm25_retriever(index, kb_name: str) -> BM25Retriever:
+def _build_bm25_retriever(index, kb_name: str, top_k: int = 5) -> BM25Retriever:
     """构建（或从缓存取）中文 BM25 检索器。"""
     if kb_name in _bm25_index_cache:
         return _bm25_index_cache[kb_name]
@@ -41,7 +41,7 @@ def _build_bm25_retriever(index, kb_name: str) -> BM25Retriever:
     retriever = BM25Retriever.from_defaults(
         nodes=nodes_list if nodes_list else None,
         tokenizer=_chinese_tokenizer,
-        similarity_top_k=5,
+        similarity_top_k=top_k,
     )
     _bm25_index_cache[kb_name] = retriever
     return retriever
@@ -97,25 +97,27 @@ class _ScoreThresholdRetriever(BaseRetriever):
 class _HybridRetriever(BaseRetriever):
     """向量 + BM25 混合检索器，使用 RRF 融合排序。"""
 
-    def __init__(self, vector_retriever, bm25_retriever):
+    def __init__(self, vector_retriever, bm25_retriever, top_k: int = 5):
         self._vector = vector_retriever
         self._bm25 = bm25_retriever
+        self._top_k = top_k
 
     def _retrieve(self, query_bundle: QueryBundle):
         query_str = query_bundle.query_str if hasattr(query_bundle, 'query_str') else str(query_bundle)
         vec_nodes = self._vector.retrieve(query_bundle)
         bm25_nodes = self._bm25.retrieve(query_str)
-        return _rrf_fusion(vec_nodes, bm25_nodes)
+        return _rrf_fusion(vec_nodes, bm25_nodes, top_k=self._top_k)
 
 
 # ── 公开入口 ──────────────────────────────
-def build_retriever(index, kb_name=None):
+def build_retriever(index, kb_name=None, top_k=5):
     """
     构建带 MetadataFilters + BM25 + RRF 的混合检索器。
 
     参数：
         index: VectorStoreIndex 实例
         kb_name: 知识库名称（传此值启用 BM25 混合检索）
+        top_k: 向量/BM25 召回数及 RRF 保留数（默认 5）
 
     返回：
         BaseRetriever 实例
@@ -123,13 +125,13 @@ def build_retriever(index, kb_name=None):
     threshold_retriever = _ScoreThresholdRetriever(
         VectorIndexRetriever(
             index=index,
-            similarity_top_k=5,
+            similarity_top_k=top_k,
         ),
         threshold=0.6,
     )
 
     if kb_name:
-        bm25_retriever = _build_bm25_retriever(index, kb_name)
-        return _HybridRetriever(threshold_retriever, bm25_retriever)
+        bm25_retriever = _build_bm25_retriever(index, kb_name, top_k=top_k)
+        return _HybridRetriever(threshold_retriever, bm25_retriever, top_k=top_k)
 
     return threshold_retriever

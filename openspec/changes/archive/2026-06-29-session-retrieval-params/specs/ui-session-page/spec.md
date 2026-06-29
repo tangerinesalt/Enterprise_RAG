@@ -1,20 +1,4 @@
-## Purpose
-
-Define the React session pages for listing sessions, binding knowledge bases, switching chats, and sending messages.
-
-## Requirements
-
-### Requirement: Session list page SHALL show all sessions
-
-The page SHALL display all sessions with bound KB info and create/delete.
-
-#### Scenario: List sessions
-- **WHEN** user visits `/session`
-- **THEN** all sessions are listed with bound KB name and chat count
-
-#### Scenario: Create session
-- **WHEN** user clicks create button
-- **THEN** a new session is created via `POST /api/session`
+## MODIFIED Requirements
 
 ### Requirement: Session chat page SHALL have two-column layout
 
@@ -43,6 +27,8 @@ The left column SHALL show session info, KB binding, retrieval parameter editing
 #### Scenario: Switch chat
 - **WHEN** user clicks a different chat in the left column list
 - **THEN** the right column loads and displays that chat's messages
+
+## ADDED Requirements
 
 ### Requirement: User SHALL view and edit retrieval params in UI
 
