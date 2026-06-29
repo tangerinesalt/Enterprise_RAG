@@ -26,7 +26,11 @@ _bm25_index_cache: dict[str, BM25Retriever] = {}
 
 
 def _load_kb_paragraphs(kb_name: str) -> list[str]:
-    """从知识库源文件读取原始段落（按 \\n\\n 分割），供 BM25 构建独立索引。"""
+    """从知识库源文件读取原始段落，供 BM25 构建独立索引。
+
+    - .txt / .md：按 \\n\\n 分割
+    - .pdf：按页分割（通过 pypdf 逐页读取）
+    """
     from app.modules.kb_manager import KnowledgeBase
     _kb = KnowledgeBase()
     fdir = _kb.files_path(kb_name)
@@ -36,19 +40,24 @@ def _load_kb_paragraphs(kb_name: str) -> list[str]:
     paragraphs = []
     for root, _, files in os.walk(fdir):
         for fname in sorted(files):
-            if not fname.endswith(".txt"):
-                continue
             fpath = os.path.join(root, fname)
             try:
-                with open(fpath, "r", encoding="utf-8-sig") as f:
-                    text = f.read()
+                if fname.endswith(".txt") or fname.endswith(".md"):
+                    with open(fpath, "r", encoding="utf-8-sig") as f:
+                        text = f.read()
+                    for para in text.split("\n\n"):
+                        para = para.strip()
+                        if para:
+                            paragraphs.append(para)
+                elif fname.endswith(".pdf"):
+                    import pypdf
+                    reader = pypdf.PdfReader(fpath)
+                    for page in reader.pages:
+                        text = (page.extract_text() or "").strip()
+                        if text:
+                            paragraphs.append(text)
             except Exception:
                 continue
-            # 按 \n\n 分割段落（兼容 .txt 和 .md）
-            for para in text.split("\n\n"):
-                para = para.strip()
-                if para:
-                    paragraphs.append(para)
     return paragraphs
 
 
@@ -62,12 +71,9 @@ def _build_bm25_retriever(kb_name: str, top_k: int = 5) -> BM25Retriever:
 
     paragraphs = _load_kb_paragraphs(kb_name)
     if not paragraphs:
-        # fallback：返回空检索器
-        retriever = BM25Retriever.from_defaults(
-            nodes=[], tokenizer=_chinese_tokenizer, similarity_top_k=top_k
-        )
-        _bm25_index_cache[kb_name] = retriever
-        return retriever
+        # fallback：返回 None，由调用方处理（降级为纯向量）
+        _bm25_index_cache[kb_name] = None
+        return None
 
     # BM25 需要 TextNode 对象（纯字符串会报错）
     para_nodes = [TextNode(text=p) for p in paragraphs]
@@ -178,7 +184,7 @@ def build_retriever(index, kb_name=None, top_k=5, mode="hybrid"):
 
     if kb_name and mode == "hybrid":
         bm25_retriever = _build_bm25_retriever(kb_name, top_k=top_k)
-        return _HybridRetriever(threshold_retriever, bm25_retriever, top_k=top_k)
-
-    # mode == "vector-only" 或未传 kb_name 时走纯向量路径
+        if bm25_retriever is not None:
+            return _HybridRetriever(threshold_retriever, bm25_retriever, top_k=top_k)
+        # BM25 无可用段落（如纯 PDF 知识库），降级为纯向量
     return threshold_retriever
