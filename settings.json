@@ -1,9 +1,18 @@
 {
   "env": {
-    "ES_URL": "http://127.0.0.1:11434/",
-    "ES_MODEL": "qwen3.5:9b",
-    "ES_TOKEN": "ollama",
     "EMBED_URL": "http://127.0.0.1:11434/",
-    "EMBED_MODEL": "qwen3-embedding:4b"
+    "EMBED_MODEL": "qwen3-embedding:4b",
+
+    "_LLM_PROVIDER_COMMENT": "可选: ollama (默认), deepseek, openai",
+    "LLM_PROVIDER": "ollama",
+
+    "_LLM_URL_COMMENT": "LLM 接口地址 (Ollama 默认 http://127.0.0.1:11434)",
+    "LLM_URL": "http://127.0.0.1:11434",
+
+    "_LLM_MODEL_COMMENT": "deepseek→deepseek-chat,openai→gpt-4o,Ollama→qwen3.5:9b",
+    "LLM_MODEL": "qwen3.5:9b",
+
+    "_LLM_TOKEN_COMMENT": "deepseek/openai 需要填写 API token",
+    "LLM_TOKEN": "ollama"
   }
 }

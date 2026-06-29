@@ -28,11 +28,20 @@ def load_settings() -> dict:
 
 _raw = load_settings().get("env", {})
 
-OLLAMA_URL = _raw.get("ES_URL", "http://127.0.0.1:11434").rstrip("/")
-LLM_MODEL = _raw.get("ES_MODEL", "qwen3.5:9b")
+# ── LLM 提供商配置 ──────────────────────────
+LLM_PROVIDER = (_raw.get("LLM_PROVIDER") or "ollama").lower().strip()
+
+# LLM_* 标准键，向后兼容 ES_* 旧键
+LLM_URL = (_raw.get("LLM_URL") or "http://127.0.0.1:11434").rstrip("/")
+LLM_MODEL = (_raw.get("LLM_MODEL")  or "qwen3.5:9b")
+LLM_TOKEN = _raw.get("LLM_TOKEN")  or ""
+
+# 便捷别名（保留向后兼容）
+OLLAMA_URL = LLM_URL
+
+# ── Embedding 配置 ──────────────────────────
 EMBED_URL = _raw.get("EMBED_URL", "http://127.0.0.1:11434").rstrip("/")
 EMBED_MODEL = _raw.get("EMBED_MODEL", "qwen3-embedding:4b")
-API_TOKEN = _raw.get("ES_TOKEN", "")
 
 # 知识库根目录
 KB_ROOT = str((_PROJECT_ROOT / "kb").resolve())

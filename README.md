@@ -15,10 +15,17 @@
 
 - Python 3.13 或兼容版本。
 - Node.js / npm。
-- Ollama 服务，默认地址为 `http://127.0.0.1:11434/`。
+- 默认使用本地 Ollama 服务（`http://127.0.0.1:11434/`）。也支持 DeepSeek 和 OpenAI。
 - 默认模型配置在 `settings.json`：
-  - LLM：`qwen3.5:9b`
+  - LLM Provider：`ollama`（可选 `deepseek`、`openai`）
+  - LLM 模型：`qwen3.5:9b`
   - Embedding：`qwen3-embedding:4b`
+
+使用 DeepSeek 或 OpenAI：
+```json
+{"env": {"LLM_PROVIDER": "deepseek", "LLM_MODEL": "deepseek-chat", "LLM_TOKEN": "sk-..."}}
+{"env": {"LLM_PROVIDER": "openai",   "LLM_MODEL": "gpt-4o",       "LLM_TOKEN": "sk-..."}}
+```
 
 如果本机 Ollama 没有这些模型，页面可以打开，但索引或对话会失败。先用下面命令检查：
 
