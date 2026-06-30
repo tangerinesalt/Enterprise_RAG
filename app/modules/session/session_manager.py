@@ -303,6 +303,8 @@ class SessionManager:
             )
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
             sp = config.get("system_prompt", "")
+            if sp and "{context_str}" not in sp:
+                sp += "\n\n上下文内容：\n---------------------\n{context_str}\n---------------------\n问题：{query_str}\n回答："
             query_engine = RetrieverQueryEngine.from_args(
                 retriever=retriever, node_postprocessors=[reranker],
                 text_qa_template=PromptTemplate(sp) if sp else None,
@@ -422,6 +424,8 @@ class SessionManager:
             top_n=top_n,
         )
         sp = config.get("system_prompt", "")
+        if sp and "{context_str}" not in sp:
+            sp += "\n\n上下文内容：\n---------------------\n{context_str}\n---------------------\n问题：{query_str}\n回答："
         query_engine = RetrieverQueryEngine.from_args(
             retriever=retriever, node_postprocessors=[reranker],
             text_qa_template=PromptTemplate(sp) if sp else None,
