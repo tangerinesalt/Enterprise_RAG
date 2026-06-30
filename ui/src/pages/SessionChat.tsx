@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sessionApi, kbApi } from '../api';
-import type { ChatFile, KbItem } from '../api';
+import type { ChatFile, KbItem, SessionItem } from '../api';
 import MarkdownMessage from '../components/MarkdownMessage';
 
 interface Message {
@@ -13,7 +13,7 @@ interface Message {
 export default function SessionChat() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
-  const [sessionInfo, setSessionInfo] = useState<any>(null);
+  const [sessionInfo, setSessionInfo] = useState<SessionItem | null>(null);
   const [chats, setChats] = useState<ChatFile[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -28,7 +28,7 @@ export default function SessionChat() {
   const [showParams, setShowParams] = useState(true);
   const msgEndRef = useRef<HTMLDivElement>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!name) return;
     try {
       const info = await sessionApi.get(name);
@@ -36,13 +36,17 @@ export default function SessionChat() {
       if (info.kb_name) setShowBind(false);
       const c = await sessionApi.listChats(name);
       setChats(c.chats);
-      if (!activeChat && c.chats.length > 0) {
-        setActiveChat(c.chats[0].file);
-      }
     } catch (e) { console.error(e); }
-  };
+  }, [name]);
 
-  useEffect(() => { load(); }, [name]);
+  useEffect(() => { load(); }, [load]);
+
+  // 仅在无 activeChat 时自动选中第一个聊天（避免 stale closure 跳转）
+  useEffect(() => {
+    if (!activeChat && chats.length > 0) {
+      setActiveChat(chats[0].file);
+    }
+  }, [activeChat, chats]);
 
   useEffect(() => {
     if (sessionInfo) {
@@ -212,7 +216,7 @@ export default function SessionChat() {
                 <textarea value={systemPrompt}
                   onChange={e => { setSystemPrompt(e.target.value); setSaveStatus('idle'); }}
                   placeholder="提示词内容（为空时使用默认提示）"
-                  rows={3}
+                  rows={8}
                   style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 11, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

@@ -533,7 +533,7 @@ class SessionManager:
             cfg["top_n"] = self.DEFAULT_TOP_N
         if "retriever_mode" not in cfg:
             cfg["retriever_mode"] = self.DEFAULT_RETRIEVER_MODE
-        if "system_prompt" not in cfg:
+        if not cfg.get("system_prompt"):
             cfg["system_prompt"] = self.DEFAULT_SYSTEM_PROMPT
         return cfg
 

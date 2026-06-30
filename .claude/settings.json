@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell($conns = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue; foreach \\($c in $conns\\) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue })"
+      "PowerShell($conns = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue; foreach \\($c in $conns\\) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue })",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, @{N=\"CommandLine\";E={$_.CommandLine}} | Format-Table -AutoSize)",
+      "PowerShell(Get-Process -Id 55988)",
+      "PowerShell(Stop-Process -Id 55988 -Force)",
+      "PowerShell(Stop-Process -Id 55680 -Force)"
     ]
   }
 }

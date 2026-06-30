@@ -171,8 +171,8 @@ export const sessionApi = {
     req<{ name: string; chat_file: string; messages: { role: string; content: string; additional_kwargs?: { sources?: { text: string; score: number }[] } }[] }>(
       `/session/${name}/chats/${chatFile}`
     ),
-  updateConfig: (name: string, data: { top_k?: number; top_n?: number }) =>
-    req<{ top_k: number; top_n: number }>(`/session/${name}/config`, {
+  updateConfig: (name: string, data: { top_k?: number; top_n?: number; system_prompt?: string }) =>
+    req<{ top_k: number; top_n: number; system_prompt?: string }>(`/session/${name}/config`, {
       method: 'PATCH', body: JSON.stringify(data),
     }),
 };

@@ -30,6 +30,8 @@ env/
 
 # --- Runtime Data ---
 logs/
+*.log
+nul
 uploads/*
 !uploads/.gitkeep
 storage/documents/*
