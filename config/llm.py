@@ -34,15 +34,18 @@ def init_llm():
                 "DeepSeek 需要配置 LLM_TOKEN。"
                 "请在 settings.json 中设置 LLM_TOKEN 或 ES_TOKEN。"
             )
+        # DeepSeek 专用默认值，不继承 Ollama 的 fallback
+        ds_model = LLM_MODEL if LLM_MODEL not in ("", "qwen3.5:9b") else "deepseek-chat"
+        ds_url = LLM_URL if LLM_URL not in ("", "http://127.0.0.1:11434") else "https://api.deepseek.com/v1"
         llm = OpenAILI(
             model="gpt-4o",  # 占位：仅用于绕过 LlamaIndex 模型名校验
             api_key=LLM_TOKEN,
-            api_base=LLM_URL or "https://api.deepseek.com/v1",
+            api_base=ds_url,
             temperature=0.5,
             request_timeout=60,
             strict=False,
         )
-        llm.model = LLM_MODEL or "deepseek-chat"  # 替换为实际模型名
+        llm.model = ds_model  # 替换为实际模型名
         # 让 _get_model_name 返回已知模型名，避免 context_window 查询失败
         llm._get_model_name = lambda: "gpt-4o"
         Settings.llm = llm

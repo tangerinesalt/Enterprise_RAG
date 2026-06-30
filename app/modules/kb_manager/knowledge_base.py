@@ -176,6 +176,17 @@ class KnowledgeBase:
                 result.append(rel.replace("\\", "/"))
         return result
 
+    def delete_file(self, name: str, filename: str):
+        """删除知识库中的单个文件。"""
+        self.ensure_exists(name)
+        fpath = self.file_path(name, filename)
+        if not os.path.isfile(fpath):
+            raise KnowledgeBaseError(f"文件 '{filename}' 不存在")
+        os.remove(fpath)
+        # 同时清理索引中的向量
+        from app.modules.kb_manager.indexer import Indexer
+        Indexer().delete_vectors(name, filename)
+
     def delete_folder(self, name: str, folder_name: str) -> list[str]:
         """
         删除知识库中的文件夹及其所有文件。

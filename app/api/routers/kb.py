@@ -142,3 +142,13 @@ def delete_kb(name: str):
         return _ok({"name": name})
     except KnowledgeBaseError as e:
         return _err(str(e), 404)
+
+
+@router.delete("/{name}/files")
+def delete_kb_file(name: str, filename: str):
+    """删除知识库中的单个文件（含向量）"""
+    try:
+        _kb.delete_file(name, filename)
+        return _ok({"name": name, "filename": filename})
+    except KnowledgeBaseError as e:
+        return _err(str(e), 404)

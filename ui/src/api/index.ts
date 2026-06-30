@@ -62,8 +62,8 @@ export const kbApi = {
   indexAll: (name: string) => req<{ indexed: number }>('/kb/index', {
     method: 'POST', body: JSON.stringify({ name, all: true }),
   }),
-  deleteFile: (name: string, target: string) => req(`/kb/${name}`, {
-    method: 'DELETE', body: JSON.stringify({ target }),
+  deleteFile: (name: string, target: string) => req(`/kb/${name}/files?filename=${encodeURIComponent(target)}`, {
+    method: 'DELETE',
   }),
 };
 
