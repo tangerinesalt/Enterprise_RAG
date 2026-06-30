@@ -22,43 +22,9 @@ def _chinese_tokenizer(text: str) -> list[str]:
 
 
 # ── BM25 索引缓存（按 kb_name）─────────────
-_bm25_index_cache: dict[str, BM25Retriever] = {}
-
-
-def _load_kb_paragraphs(kb_name: str) -> list[str]:
-    """从知识库源文件读取原始段落，供 BM25 构建独立索引。
-
-    - .txt / .md：按 \\n\\n 分割
-    - .pdf：按页分割（通过 pypdf 逐页读取）
-    """
-    from app.modules.kb_manager import KnowledgeBase
-    _kb = KnowledgeBase()
-    fdir = _kb.files_path(kb_name)
-    if not os.path.isdir(fdir):
-        return []
-
-    paragraphs = []
-    for root, _, files in os.walk(fdir):
-        for fname in sorted(files):
-            fpath = os.path.join(root, fname)
-            try:
-                if fname.endswith(".txt") or fname.endswith(".md"):
-                    with open(fpath, "r", encoding="utf-8-sig") as f:
-                        text = f.read()
-                    for para in text.split("\n\n"):
-                        para = para.strip()
-                        if para:
-                            paragraphs.append(para)
-                elif fname.endswith(".pdf"):
-                    import pypdf
-                    reader = pypdf.PdfReader(fpath)
-                    for page in reader.pages:
-                        text = (page.extract_text() or "").strip()
-                        if text:
-                            paragraphs.append(text)
-            except Exception:
-                continue
-    return paragraphs
+# 缓存结构：{kb_name: (vector_count, BM25Retriever)}
+# vector_count 用于检测 ChromaDB 是否已更新，不一致时自动重建
+_bm25_index_cache: dict[str, tuple[int, BM25Retriever]] = {}
 
 
 def _build_bm25_retriever(kb_name: str, top_k: int = 5,
@@ -73,8 +39,16 @@ def _build_bm25_retriever(kb_name: str, top_k: int = 5,
         top_k: BM25 召回数
         collection: ChromaDB collection 实例（None 时按 kv_name 直连）
     """
+    # 缓存校验：检测 ChromaDB 向量数是否变化，不一致时自动重建
     if kb_name in _bm25_index_cache:
-        return _bm25_index_cache[kb_name]
+        cached_count, cached_retriever = _bm25_index_cache[kb_name]
+        try:
+            current_count = collection.count() if collection else 0
+        except Exception:
+            current_count = 0
+        if current_count == cached_count:
+            return cached_retriever
+        # 向量数变化，自动重建
 
     # 优先使用传入的 collection，否则自动连接
     if collection is None:
@@ -83,22 +57,22 @@ def _build_bm25_retriever(kb_name: str, top_k: int = 5,
         _kb = KnowledgeBase()
         db_path = _kb.vector_db_path(kb_name)
         if not os.path.isdir(db_path):
-            _bm25_index_cache[kb_name] = None
+            _bm25_index_cache[kb_name] = (0, None)
             return None
         try:
             collection = chromadb.PersistentClient(path=db_path).get_collection("kb_index")
         except Exception:
-            _bm25_index_cache[kb_name] = None
+            _bm25_index_cache[kb_name] = (0, None)
             return None
 
     try:
         data = collection.get(include=["documents"])
     except Exception:
-        _bm25_index_cache[kb_name] = None
+        _bm25_index_cache[kb_name] = (0, None)
         return None
 
     if not data or not data["ids"]:
-        _bm25_index_cache[kb_name] = None
+        _bm25_index_cache[kb_name] = (0, None)
         return None
 
     # 用 ChromaDB 的 id（即 node_id）+ 文本重建 TextNode
@@ -113,7 +87,12 @@ def _build_bm25_retriever(kb_name: str, top_k: int = 5,
         tokenizer=_chinese_tokenizer,
         similarity_top_k=top_k,
     )
-    _bm25_index_cache[kb_name] = retriever
+    # 同时缓存向量数，用于检测索引更新
+    try:
+        vcount = collection.count()
+    except Exception:
+        vcount = 0
+    _bm25_index_cache[kb_name] = (vcount, retriever)
     return retriever
 
 
