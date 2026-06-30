@@ -64,21 +64,42 @@ def _load_kb_paragraphs(kb_name: str) -> list[str]:
 def _build_bm25_retriever(kb_name: str, top_k: int = 5) -> BM25Retriever:
     """构建（或从缓存取）中文 BM25 检索器。
 
-    基于知识库源文件的原始段落（\\n\\n 分割），而非向量索引的合并 chunk。
+    从 ChromaDB 读取向量索引的 chunk 文本和 node_id，
+    构建与向量完全相同的 TextNode 列表，使 RRF 能通过 node_id 去重。
     """
     if kb_name in _bm25_index_cache:
         return _bm25_index_cache[kb_name]
 
-    paragraphs = _load_kb_paragraphs(kb_name)
-    if not paragraphs:
-        # fallback：返回 None，由调用方处理（降级为纯向量）
+    # 从 ChromaDB 读取 chunk 文本（与向量索引相同的数据源）
+    from app.modules.kb_manager import KnowledgeBase
+    import chromadb
+    _kb = KnowledgeBase()
+    db_path = _kb.vector_db_path(kb_name)
+    if not os.path.isdir(db_path):
         _bm25_index_cache[kb_name] = None
         return None
 
-    # BM25 需要 TextNode 对象（纯字符串会报错）
-    para_nodes = [TextNode(text=p) for p in paragraphs]
+    try:
+        db = chromadb.PersistentClient(path=db_path)
+        col = db.get_collection("kb_index")
+        data = col.get(include=["documents"])
+    except Exception:
+        _bm25_index_cache[kb_name] = None
+        return None
+
+    if not data or not data["ids"]:
+        _bm25_index_cache[kb_name] = None
+        return None
+
+    # 用 ChromaDB 的 id（即 node_id）+ 文本重建 TextNode
+    # 注意：TextNode 构造时不接受 node_id 参数，需创建后手动赋值
+    chunk_nodes = []
+    for did, t in zip(data["ids"], data["documents"]):
+        node = TextNode(text=t)
+        node.node_id = did  # 覆盖为 ChromaDB 的 document ID（=原始 node_id）
+        chunk_nodes.append(node)
     retriever = BM25Retriever.from_defaults(
-        nodes=para_nodes,
+        nodes=chunk_nodes,
         tokenizer=_chinese_tokenizer,
         similarity_top_k=top_k,
     )
