@@ -22,11 +22,6 @@ from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core import PromptTemplate
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from config.prompts import QA_SYSTEM_PROMPT
-
-# 公用 QA prompt 模板
-_qa_prompt = PromptTemplate(QA_SYSTEM_PROMPT)
-
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.retrieval import build_retriever
@@ -66,6 +61,7 @@ class SessionManager:
     DEFAULT_TOP_K = 8
     DEFAULT_TOP_N = 5
     DEFAULT_RETRIEVER_MODE = "hybrid"
+    DEFAULT_SYSTEM_PROMPT = ""
 
     # ── 路径 ─────────────────────────────────
 
@@ -91,6 +87,7 @@ class SessionManager:
             "top_k": self.DEFAULT_TOP_K,
             "top_n": self.DEFAULT_TOP_N,
             "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
+            "system_prompt": self.DEFAULT_SYSTEM_PROMPT,
         })
         return path
 
@@ -304,9 +301,11 @@ class SessionManager:
                 top_n=top_n,
             )
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
+            sp = config.get("system_prompt", "")
             query_engine = RetrieverQueryEngine.from_args(
                 retriever=retriever, node_postprocessors=[reranker],
-                text_qa_template=_qa_prompt, streaming=True,
+                text_qa_template=PromptTemplate(sp) if sp else None,
+                streaming=True,
             )
             t0 = _t()
             response = query_engine.query(query)
@@ -421,9 +420,10 @@ class SessionManager:
             model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
             top_n=top_n,
         )
+        sp = config.get("system_prompt", "")
         query_engine = RetrieverQueryEngine.from_args(
             retriever=retriever, node_postprocessors=[reranker],
-            text_qa_template=_qa_prompt,
+            text_qa_template=PromptTemplate(sp) if sp else None,
         )
         response = query_engine.query(query)
         print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
@@ -487,6 +487,10 @@ class SessionManager:
                     raise SessionError(
                         f"retriever_mode MUST be 'hybrid' or 'vector-only', got '{value}'")
                 cfg[key] = value
+            elif key == "system_prompt":
+                if not isinstance(value, str):
+                    raise SessionError(f"system_prompt MUST be a string")
+                cfg[key] = value
             else:
                 raise SessionError(f"不支持的配置项: {key}")
 
@@ -500,7 +504,8 @@ class SessionManager:
         if not os.path.isfile(path):
             return {"kb_name": None, "active_chat": None,
                     "top_k": self.DEFAULT_TOP_K, "top_n": self.DEFAULT_TOP_N,
-                    "retriever_mode": self.DEFAULT_RETRIEVER_MODE}
+                    "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
+                    "system_prompt": self.DEFAULT_SYSTEM_PROMPT}
         with open(path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         # 兼容旧 config：缺失字段用默认值补全
@@ -510,6 +515,8 @@ class SessionManager:
             cfg["top_n"] = self.DEFAULT_TOP_N
         if "retriever_mode" not in cfg:
             cfg["retriever_mode"] = self.DEFAULT_RETRIEVER_MODE
+        if "system_prompt" not in cfg:
+            cfg["system_prompt"] = self.DEFAULT_SYSTEM_PROMPT
         return cfg
 
     def _save_config(self, name: str, data: dict):

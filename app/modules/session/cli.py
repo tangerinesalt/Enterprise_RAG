@@ -143,10 +143,14 @@ def cmd_config(args):
                     print(f"[ERROR] 格式错误: '{kv}'，应为 key=value")
                     sys.exit(1)
                 key, val = kv.split("=", 1)
-                kwargs[key.strip()] = int(val.strip())
+                key = key.strip()
+                if key == "system_prompt":
+                    kwargs[key] = val.strip()
+                else:
+                    kwargs[key] = int(val.strip())
             cfg = _session.update_config(args.name, **kwargs)
             print(f"[OK] 会话 '{args.name}' 配置已更新")
-        else:
+        if not args.set:
             cfg = _session.get_config(args.name)
         print(f"\n会话 '{args.name}' 配置:")
         print(f"{'='*40}")
@@ -154,6 +158,9 @@ def cmd_config(args):
         print(f"  top_n: {cfg.get('top_n', '(未设置)')}")
         print(f"  kb_name: {cfg.get('kb_name') or '(未绑定)'}")
         print(f"  active_chat: {cfg.get('active_chat') or '(无)'}")
+        sp = cfg.get("system_prompt", "")
+        if sp:
+            print(f"  system_prompt: {sp[:50]}...")
     except SessionError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
