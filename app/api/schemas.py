@@ -51,3 +51,4 @@ class SessionChatRequest(BaseModel):
 class SessionConfigUpdateRequest(BaseModel):
     top_k: Optional[int] = None
     top_n: Optional[int] = None
+    system_prompt: Optional[str] = None
