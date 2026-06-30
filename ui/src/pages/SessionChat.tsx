@@ -205,17 +205,6 @@ export default function SessionChat() {
                   style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
                 <span style={{ fontSize: 11, color: '#9ca3af' }}>保留数</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={handleSaveConfig} disabled={saveStatus === 'saving'}
-                  style={{
-                    padding: '3px 10px', fontSize: 12, border: 'none', borderRadius: 3, cursor: 'pointer',
-                    background: saveStatus === 'saving' ? '#93c5fd' : '#2563eb', color: '#fff',
-                  }}>
-                  {saveStatus === 'saving' ? '保存中...' : '💾 保存'}
-                </button>
-                {saveStatus === 'saved' && <span style={{ fontSize: 11, color: '#059669' }}>✓ 已保存</span>}
-                {saveStatus === 'error' && <span style={{ fontSize: 11, color: '#dc2626' }}>保存失败，参数必须 ≥ 1</span>}
-              </div>
 
               {/* 提示词编辑 */}
               <div style={{ marginTop: 8 }}>
@@ -225,6 +214,17 @@ export default function SessionChat() {
                   placeholder="提示词内容（为空时使用默认提示）"
                   rows={3}
                   style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 11, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <button onClick={handleSaveConfig} disabled={saveStatus === 'saving'}
+                  style={{
+                    padding: '3px 10px', fontSize: 12, border: 'none', borderRadius: 3, cursor: 'pointer',
+                    background: saveStatus === 'saving' ? '#93c5fd' : '#2563eb', color: '#fff',
+                  }}>
+                  {saveStatus === 'saving' ? '保存中...' : '💾 保存'}
+                </button>
+                {saveStatus === 'saved' && <span style={{ fontSize: 11, color: '#059669' }}>✓ 已保存</span>}
+                {saveStatus === 'error' && <span style={{ fontSize: 11, color: '#dc2626' }}>保存失败，参数必须 ≥ 1</span>}
               </div>
             </div>
           )}
