@@ -61,28 +61,38 @@ def _load_kb_paragraphs(kb_name: str) -> list[str]:
     return paragraphs
 
 
-def _build_bm25_retriever(kb_name: str, top_k: int = 5) -> BM25Retriever:
+def _build_bm25_retriever(kb_name: str, top_k: int = 5,
+                          collection=None) -> BM25Retriever:
     """构建（或从缓存取）中文 BM25 检索器。
 
     从 ChromaDB 读取向量索引的 chunk 文本和 node_id，
     构建与向量完全相同的 TextNode 列表，使 RRF 能通过 node_id 去重。
+
+    参数：
+        kb_name: 知识库名称（缓存键）
+        top_k: BM25 召回数
+        collection: ChromaDB collection 实例（None 时按 kv_name 直连）
     """
     if kb_name in _bm25_index_cache:
         return _bm25_index_cache[kb_name]
 
-    # 从 ChromaDB 读取 chunk 文本（与向量索引相同的数据源）
-    from app.modules.kb_manager import KnowledgeBase
-    import chromadb
-    _kb = KnowledgeBase()
-    db_path = _kb.vector_db_path(kb_name)
-    if not os.path.isdir(db_path):
-        _bm25_index_cache[kb_name] = None
-        return None
+    # 优先使用传入的 collection，否则自动连接
+    if collection is None:
+        from app.modules.kb_manager import KnowledgeBase
+        import chromadb
+        _kb = KnowledgeBase()
+        db_path = _kb.vector_db_path(kb_name)
+        if not os.path.isdir(db_path):
+            _bm25_index_cache[kb_name] = None
+            return None
+        try:
+            collection = chromadb.PersistentClient(path=db_path).get_collection("kb_index")
+        except Exception:
+            _bm25_index_cache[kb_name] = None
+            return None
 
     try:
-        db = chromadb.PersistentClient(path=db_path)
-        col = db.get_collection("kb_index")
-        data = col.get(include=["documents"])
+        data = collection.get(include=["documents"])
     except Exception:
         _bm25_index_cache[kb_name] = None
         return None
@@ -204,8 +214,11 @@ def build_retriever(index, kb_name=None, top_k=5, mode="hybrid"):
     )
 
     if kb_name and mode == "hybrid":
-        bm25_retriever = _build_bm25_retriever(kb_name, top_k=top_k)
+        # 从 index 复用 ChromaDB collection，与向量检索使用同一连接
+        collection = getattr(index.vector_store, "_collection", None)
+        bm25_retriever = _build_bm25_retriever(
+            kb_name, top_k=top_k, collection=collection)
         if bm25_retriever is not None:
             return _HybridRetriever(threshold_retriever, bm25_retriever, top_k=top_k)
-        # BM25 无可用段落（如纯 PDF 知识库），降级为纯向量
+        # BM25 不可用（如无 ChromaDB 数据），降级为纯向量
     return threshold_retriever
