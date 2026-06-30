@@ -293,9 +293,12 @@ class SessionManager:
             top_k = config.get("top_k", self.DEFAULT_TOP_K)
             top_n = config.get("top_n", self.DEFAULT_TOP_N)
             retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
-            rerank = SentenceTransformerRerank(top_n=top_n)
+            reranker = SentenceTransformerRerank(
+                model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
+                top_n=top_n,
+            )
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-            query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank],streaming=True)
+            query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[reranker],streaming=True)
             t0 = _t()
             response = query_engine.query(query)
             print(f"[TIMING] retrieval: {_t()-t0:.3f}s")
@@ -405,8 +408,11 @@ class SessionManager:
         top_n = config.get("top_n", self.DEFAULT_TOP_N)
         retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
         retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-        rerank = SentenceTransformerRerank(top_n=top_n)
-        query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[rerank])
+        reranker = SentenceTransformerRerank(
+            model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
+            top_n=top_n,
+        )
+        query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[reranker])
         response = query_engine.query(query)
         print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
 
