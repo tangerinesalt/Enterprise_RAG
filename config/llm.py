@@ -41,7 +41,7 @@ def init_llm():
             model="gpt-4o",  # 占位：仅用于绕过 LlamaIndex 模型名校验
             api_key=LLM_TOKEN,
             api_base=ds_url,
-            temperature=0.5,
+            temperature=0.7,
             request_timeout=60,
             strict=False,
         )

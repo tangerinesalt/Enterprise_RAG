@@ -19,7 +19,13 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.postprocessor import SentenceTransformerRerank
+from llama_index.core import PromptTemplate
 from llama_index.vector_stores.chroma import ChromaVectorStore
+
+from config.prompts import QA_SYSTEM_PROMPT
+
+# 公用 QA prompt 模板
+_qa_prompt = PromptTemplate(QA_SYSTEM_PROMPT)
 
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
@@ -298,7 +304,10 @@ class SessionManager:
                 top_n=top_n,
             )
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-            query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[reranker],streaming=True)
+            query_engine = RetrieverQueryEngine.from_args(
+                retriever=retriever, node_postprocessors=[reranker],
+                text_qa_template=_qa_prompt, streaming=True,
+            )
             t0 = _t()
             response = query_engine.query(query)
             print(f"[TIMING] retrieval: {_t()-t0:.3f}s")
@@ -412,7 +421,10 @@ class SessionManager:
             model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
             top_n=top_n,
         )
-        query_engine = RetrieverQueryEngine.from_args(retriever=retriever, node_postprocessors=[reranker])
+        query_engine = RetrieverQueryEngine.from_args(
+            retriever=retriever, node_postprocessors=[reranker],
+            text_qa_template=_qa_prompt,
+        )
         response = query_engine.query(query)
         print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
 
