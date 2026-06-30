@@ -137,6 +137,7 @@ class SessionManager:
             "active_chat": config.get("active_chat"),
             "top_k": config.get("top_k", self.DEFAULT_TOP_K),
             "top_n": config.get("top_n", self.DEFAULT_TOP_N),
+            "system_prompt": config.get("system_prompt", self.DEFAULT_SYSTEM_PROMPT),
             "total_chats": len(chats),
             "chat_files": chats,
         }

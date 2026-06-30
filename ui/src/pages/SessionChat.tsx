@@ -23,7 +23,9 @@ export default function SessionChat() {
   const [kbList, setKbList] = useState<KbItem[]>([]);
   const [topK, setTopK] = useState(8);
   const [topN, setTopN] = useState(5);
+  const [systemPrompt, setSystemPrompt] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showParams, setShowParams] = useState(true);
   const msgEndRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -46,6 +48,7 @@ export default function SessionChat() {
     if (sessionInfo) {
       setTopK(sessionInfo.top_k ?? 8);
       setTopN(sessionInfo.top_n ?? 5);
+      setSystemPrompt(sessionInfo.system_prompt ?? "");
     }
   }, [sessionInfo]);
 
@@ -85,7 +88,7 @@ export default function SessionChat() {
     }
     setSaveStatus('saving');
     try {
-      await sessionApi.updateConfig(name, { top_k: topK, top_n: topN });
+      await sessionApi.updateConfig(name, { top_k: topK, top_n: topN, system_prompt: systemPrompt });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
@@ -178,35 +181,57 @@ export default function SessionChat() {
           </div>
         )}
 
-        {/* 检索参数编辑区域 */}
-        <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>🔍 检索参数</div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-            <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_k:</label>
-            <input type="number" min={1} value={topK}
-              onChange={e => { setTopK(Number(e.target.value)); setSaveStatus('idle'); }}
-              style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>召回数</span>
+        {/* 检索参数编辑区域（可折叠） */}
+        <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb' }}>
+          <div onClick={() => setShowParams(!showParams)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '8px 0' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>🔍 检索参数</span>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>{showParams ? '▼' : '▶'}</span>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-            <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_n:</label>
-            <input type="number" min={1} value={topN}
-              onChange={e => { setTopN(Number(e.target.value)); setSaveStatus('idle'); }}
-              style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>保留数</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={handleSaveConfig} disabled={saveStatus === 'saving'}
-              style={{
-                padding: '3px 10px', fontSize: 12, border: 'none', borderRadius: 3, cursor: 'pointer',
-                background: saveStatus === 'saving' ? '#93c5fd' : '#2563eb', color: '#fff',
-              }}>
-              {saveStatus === 'saving' ? '保存中...' : '💾 保存'}
-            </button>
-            {saveStatus === 'saved' && <span style={{ fontSize: 11, color: '#059669' }}>✓ 已保存</span>}
-            {saveStatus === 'error' && <span style={{ fontSize: 11, color: '#dc2626' }}>保存失败，参数必须 ≥ 1</span>}
-          </div>
+
+          {showParams && (
+            <div style={{ paddingBottom: 8 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_k:</label>
+                <input type="number" min={1} value={topK}
+                  onChange={e => { setTopK(Number(e.target.value)); setSaveStatus('idle'); }}
+                  style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>召回数</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontSize: 13, color: '#6b7280', minWidth: 48 }}>top_n:</label>
+                <input type="number" min={1} value={topN}
+                  onChange={e => { setTopN(Number(e.target.value)); setSaveStatus('idle'); }}
+                  style={{ width: 60, padding: '2px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 13 }} />
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>保留数</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={handleSaveConfig} disabled={saveStatus === 'saving'}
+                  style={{
+                    padding: '3px 10px', fontSize: 12, border: 'none', borderRadius: 3, cursor: 'pointer',
+                    background: saveStatus === 'saving' ? '#93c5fd' : '#2563eb', color: '#fff',
+                  }}>
+                  {saveStatus === 'saving' ? '保存中...' : '💾 保存'}
+                </button>
+                {saveStatus === 'saved' && <span style={{ fontSize: 11, color: '#059669' }}>✓ 已保存</span>}
+                {saveStatus === 'error' && <span style={{ fontSize: 11, color: '#dc2626' }}>保存失败，参数必须 ≥ 1</span>}
+              </div>
+
+              {/* 提示词编辑 */}
+              <div style={{ marginTop: 8 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>📝 提示词</label>
+                <textarea value={systemPrompt}
+                  onChange={e => { setSystemPrompt(e.target.value); setSaveStatus('idle'); }}
+                  placeholder="提示词内容（为空时使用默认提示）"
+                  rows={3}
+                  style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 3, fontSize: 11, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* 分隔线 */}
+        <div style={{ borderTop: '1px solid #e5e7eb', margin: '4px 0' }} />
 
         <button onClick={handleNewChat} style={{ ...btnPrimary, width: '100%', margin: '12px 0' }}>＋ 新聊天</button>
 

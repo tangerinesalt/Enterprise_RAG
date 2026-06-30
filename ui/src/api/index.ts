@@ -75,6 +75,7 @@ export interface SessionItem {
   active_chat: string | null;
   top_k?: number;
   top_n?: number;
+  system_prompt?: string;
   total_chats: number;
 }
 
