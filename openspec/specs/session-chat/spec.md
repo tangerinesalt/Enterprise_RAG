@@ -36,6 +36,16 @@ The system SHALL retrieve relevant chunks from the bound knowledge base and gene
 - **WHEN** user runs `session chat my-session "question"` and no KB is bound
 - **THEN** system prints "No knowledge base bound to session 'my-session'"
 
+### Requirement: Frontend SHALL not auto-select chat on session page load
+
+The frontend SHALL NOT automatically select or load any chat file when the user enters a session page. Chat files are loaded only on explicit user action (clicking a chat in the sidebar).
+
+#### Scenario: No chat auto-selected on entry
+- **WHEN** user navigates to `/session/<name>` via web UI
+- **THEN** the session info and chat list are loaded from the server
+- **THEN** no chat file content is fetched
+- **THEN** no chat file is shown in the main content area
+
 ## MODIFIED Requirements
 
 ### Requirement: System SHALL retrieve with session-level top_k

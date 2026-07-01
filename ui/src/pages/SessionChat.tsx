@@ -41,13 +41,6 @@ export default function SessionChat() {
 
   useEffect(() => { load(); }, [load]);
 
-  // 仅在无 activeChat 时自动选中第一个聊天（避免 stale closure 跳转）
-  useEffect(() => {
-    if (!activeChat && chats.length > 0) {
-      setActiveChat(chats[0].file);
-    }
-  }, [activeChat, chats]);
-
   useEffect(() => {
     if (sessionInfo) {
       setTopK(sessionInfo.top_k ?? 8);
@@ -59,7 +52,8 @@ export default function SessionChat() {
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   useEffect(() => {
-    if (!name || !activeChat) return;
+    // loading 时跳过：提交中会通过 onToken 填充消息，不要被空文件内容覆盖
+    if (!name || !activeChat || loading) return;
     sessionApi.getMessages(name, activeChat)
       .then(d => setMessages(d.messages.map(m => ({
         role: m.role,
@@ -67,7 +61,7 @@ export default function SessionChat() {
         sources: m.additional_kwargs?.sources || undefined,
       }))))
       .catch(() => setMessages([]));
-  }, [name, activeChat]);
+  }, [name, activeChat, loading]);
 
   const handleBind = async (kbName: string) => {
     if (!name) return;
@@ -76,12 +70,9 @@ export default function SessionChat() {
     load();
   };
 
-  const handleNewChat = async () => {
-    if (!name) return;
-    const res = await sessionApi.newChat(name);
-    setActiveChat(res.chat_file);
+  const handleNewChat = () => {
+    setActiveChat(null);
     setMessages([]);
-    load();
   };
 
   const handleSaveConfig = async () => {
@@ -109,6 +100,27 @@ export default function SessionChat() {
     // Add user message + empty assistant placeholder
     setMessages(prev => [...prev, { role: 'user', content: q }, { role: 'assistant', content: '' }]);
 
+    // 按需创建聊天：空白状态下提交时先创建新聊天文件
+    let chatFile = activeChat;
+    if (!chatFile) {
+      try {
+        const res = await sessionApi.newChat(name);
+        chatFile = res.chat_file;
+        setActiveChat(chatFile);
+        load(); // 立即刷新侧边栏，新聊天无需等流结束就出现
+      } catch (e) {
+        setMessages(prev => {
+          const msgs = [...prev];
+          const last = { ...msgs[msgs.length - 1] };
+          last.content = `❌ 创建聊天失败: ${e}`;
+          msgs[msgs.length - 1] = last;
+          return msgs;
+        });
+        setLoading(false);
+        return;
+      }
+    }
+
     await sessionApi.chatStream(name, q, {
       onToken: (token) => {
         setMessages(prev => {
@@ -128,8 +140,7 @@ export default function SessionChat() {
           return msgs;
         });
       },
-      onDone: (chat_file) => {
-        if (!activeChat) setActiveChat(chat_file);
+      onDone: (_chat_file) => {
         setLoading(false);
         load(); // refresh chat list
       },
@@ -143,7 +154,7 @@ export default function SessionChat() {
         });
         setLoading(false);
       },
-    }, activeChat || undefined);
+    }, chatFile);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -248,7 +259,7 @@ export default function SessionChat() {
           }}>
             <div onClick={() => setActiveChat(c.file)}
               style={{ flex: 1, padding: '6px 8px', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {c.file}
+              {c.preview || c.file}
             </div>
             <button onClick={async (e) => {
               e.stopPropagation();
@@ -302,35 +313,36 @@ export default function SessionChat() {
               ))}
               <div ref={msgEndRef} />
             </div>
-
-            <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
-              <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-                rows={2}
-                style={{
-                  flex: 1, padding: '8px 12px', border: '1px solid #d1d5db',
-                  borderRadius: 6, fontSize: 14, resize: 'none',
-                  fontFamily: 'inherit',
-                }}
-              />
-              <button onClick={handleSubmit} disabled={loading || !input.trim()}
-                style={{
-                  padding: '8px 20px', background: loading ? '#93c5fd' : '#2563eb',
-                  color: '#fff', border: 'none', borderRadius: 6,
-                  cursor: 'pointer', fontSize: 14, alignSelf: 'flex-end',
-                }}>
-                {loading ? '...' : '↵ 发送'}
-              </button>
-            </div>
           </>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af' }}>
-            {chats.length === 0 ? '点击「新聊天」开始对话' : '选择一个聊天'}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
+            {chats.length === 0 ? '输入问题自动创建新聊天' : '选择已有聊天，或直接输入问题'}
           </div>
         )}
+
+        {/* 输入区域 — 始终可见，空白状态下输入将自动创建新聊天 */}
+        <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            rows={2}
+            style={{
+              flex: 1, padding: '8px 12px', border: '1px solid #d1d5db',
+              borderRadius: 6, fontSize: 14, resize: 'none',
+              fontFamily: 'inherit',
+            }}
+          />
+          <button onClick={handleSubmit} disabled={loading || !input.trim()}
+            style={{
+              padding: '8px 20px', background: loading ? '#93c5fd' : '#2563eb',
+              color: '#fff', border: 'none', borderRadius: 6,
+              cursor: 'pointer', fontSize: 14, alignSelf: 'flex-end',
+            }}>
+            {loading ? '...' : '↵ 发送'}
+          </button>
+        </div>
       </div>
     </div>
   );

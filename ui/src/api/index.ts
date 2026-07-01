@@ -95,6 +95,7 @@ export interface SessionItem {
 export interface ChatFile {
   file: string;
   is_active: boolean;
+  preview?: string;
 }
 
 export interface SourceItem {

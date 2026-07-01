@@ -38,3 +38,16 @@ Clicking "新聊天" SHALL only clear the local state without making any API cal
 - **THEN** activeChat is set to null
 - **THEN** messages are cleared
 - **THEN** no API call to `POST /api/session/new` is made
+
+### Requirement: Chat list SHALL show query preview
+
+The chat list sidebar SHALL display a readable preview of the first user query alongside each chat file, enabling users to identify conversations without opening them.
+
+#### Scenario: New chat shows preview after first submit
+- **WHEN** user submits a question in a new chat
+- **THEN** the query preview (first 10 characters + "...") is saved to the session config
+- **THEN** the chat list sidebar refreshes and shows the preview text
+
+#### Scenario: Old chats fallback to filename
+- **WHEN** a chat file was created before this feature and has no saved preview
+- **THEN** the sidebar displays the chat filename as fallback

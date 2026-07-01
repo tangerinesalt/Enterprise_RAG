@@ -204,19 +204,21 @@ class SessionManager:
         return result
 
     def list_chats(self, name: str) -> list[dict]:
-        """列出会话的聊天文件（仅文件名和活跃标记），不读取文件内容。"""
+        """列出会话的聊天文件（含 query 预览），不读取文件内容。"""
         self._ensure_exists(name)
         cdir = self.chats_dir(name)
         if not os.path.isdir(cdir):
             return []
         config = self._load_config(name)
         active = config.get("active_chat")
+        previews = config.get("chat_previews", {})
         result = []
         for f in sorted(os.listdir(cdir)):
             if f.endswith(".json"):
                 result.append({
                     "file": f,
                     "is_active": f == active,
+                    "preview": previews.get(f),
                 })
         return result
 
@@ -376,7 +378,17 @@ class SessionManager:
                 ),
             )
             store.persist(chat_path)
-            
+
+            # 首次写入后保存 query 预览到会话配置
+            if query:
+                _cfg = self._load_config(name)
+                _previews = _cfg.get("chat_previews", {})
+                if chat_file not in _previews:
+                    _preview = query[:15].replace("\n", " ")
+                    _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
+                    _cfg["chat_previews"] = _previews
+                    self._save_config(name, _cfg)
+
             # 日志
             elapsed = time.monotonic() - _t0
             ans_preview = answer[:100].replace("\n", " ")
@@ -498,6 +510,16 @@ class SessionManager:
         # 阶段 3：持久化
         store.persist(chat_path)
 
+        # 首次写入后保存 query 预览到会话配置
+        if query:
+            _cfg = self._load_config(name)
+            _previews = _cfg.get("chat_previews", {})
+            if chat_file not in _previews:
+                _preview = query[:15].replace("\n", " ")
+                _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
+                _cfg["chat_previews"] = _previews
+                self._save_config(name, _cfg)
+
         elapsed = time.monotonic() - _t0
         ans_preview = answer[:100].replace("\n", " ")
         source_scores = [s["score"] for s in sources if s["score"] is not None]
@@ -569,6 +591,8 @@ class SessionManager:
             cfg["retriever_mode"] = self.DEFAULT_RETRIEVER_MODE
         if not cfg.get("system_prompt"):
             cfg["system_prompt"] = self.DEFAULT_SYSTEM_PROMPT
+        if "chat_previews" not in cfg:
+            cfg["chat_previews"] = {}
         return cfg
 
     def _save_config(self, name: str, data: dict):
