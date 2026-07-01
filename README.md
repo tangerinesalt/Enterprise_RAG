@@ -20,19 +20,16 @@
 - **Node.js** / npm（用于前端）
 - **Ollama**（本地 LLM/Embedding 模式时必需；DeepSeek/OpenAI 远端模式不需要）
 
-### 模型依赖
+### 模型清单
 
-| 层级 | 模型 | 大小 | 获取方式 |
-|------|------|------|---------|
-| **LLM** | `deepseek-v4-flash`（远端）或 `qwen3.5:9b`（本地 Ollama） | ~5GB | `ollama pull qwen3.5:9b` / 远端 API |
-| **Embedding** | `bge-m3` | ~1.2GB | `ollama pull bge-m3` |
-| **Reranker** | `BAAI/bge-reranker-v2-m3` | ~2.2GB | `pip install sentence-transformers torch` → `python scripts/download_reranker.py` |
-| **OCR 兜底**（可选） | rapidocr-onnxruntime + pypdfium2 | ~100MB | `pip install rapidocr-onnxruntime pypdfium2` |
+| 层级 | 模型 | 大小 | 说明 |
+|------|------|------|------|
+| **LLM** | `deepseek-v4-flash`（远端）或 `qwen3.5:9b`（本地 Ollama） | ~5GB | 问答生成 |
+| **Embedding** | `bge-m3` | ~1.2GB | 文档向量化 |
+| **Reranker** | `BAAI/bge-reranker-v2-m3` | ~2.2GB | 检索结果重排序 |
+| **OCR 兜底**（可选） | rapidocr-onnxruntime + pypdfium2 | ~100MB | PDF 文字提取失败时自动启用 |
 
-检查本机已有模型：
-```powershell
-ollama list
-```
+安装命令见下方「安装」节。
 
 ### 配置项
 
@@ -75,6 +72,13 @@ python scripts/download_reranker.py
 
 # 6. OCR 兜底（可选，PDF 文字提取失败时自动启用）
 pip install rapidocr-onnxruntime pypdfium2
+```
+
+**Ollama 模型**（本地模式时需要）：
+
+```powershell
+ollama pull qwen3.5:9b      # LLM
+ollama pull bge-m3           # Embedding
 ```
 
 各组之间独立——你可以只装需要的。例如仅用 DeepSeek API + Ollama Embedding：
