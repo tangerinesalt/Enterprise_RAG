@@ -9,29 +9,45 @@
 - 向量索引：基于 LlamaIndex + ChromaDB 建立知识库索引。
 - RAG 问答：会话绑定知识库后，按用户问题检索相关片段并调用 LLM 生成回答。
 - 会话与聊天记录：支持创建会话、新建聊天、切换历史聊天、查看聊天记录。
+- 延迟创建聊天：进入会话后显示空白状态，输入问题时自动创建聊天文件；侧边栏显示首条 query 预览。
 - Web 服务：FastAPI 后端提供 REST API，Vite + React 前端提供知识库和会话页面。
 
 ## 运行依赖
 
-- Python 3.13 或兼容版本。
-- Node.js / npm。
-- 默认使用本地 Ollama 服务（`http://127.0.0.1:11434/`）。也支持 DeepSeek 和 OpenAI。
-- 默认模型配置在 `settings.json`：
-  - LLM Provider：`ollama`（可选 `deepseek`、`openai`）
-  - LLM 模型：`qwen3.5:9b`
-  - Embedding：`qwen3-embedding:4b`
+### 基础环境
 
-使用 DeepSeek 或 OpenAI：
-```json
-{"env": {"LLM_PROVIDER": "deepseek", "LLM_MODEL": "deepseek-chat", "LLM_TOKEN": "sk-..."}}
-{"env": {"LLM_PROVIDER": "openai",   "LLM_MODEL": "gpt-4o",       "LLM_TOKEN": "sk-..."}}
-```
+- **Python** 3.13 或兼容版本
+- **Node.js** / npm（用于前端）
+- **Ollama**（本地 LLM/Embedding 模式时必需；DeepSeek/OpenAI 远端模式不需要）
 
-如果本机 Ollama 没有这些模型，页面可以打开，但索引或对话会失败。先用下面命令检查：
+### 模型依赖
 
+| 层级 | 模型 | 大小 | 获取方式 |
+|------|------|------|---------|
+| **LLM** | `deepseek-v4-flash`（远端）或 `qwen3.5:9b`（本地 Ollama） | ~5GB | `ollama pull qwen3.5:9b` / 远端 API |
+| **Embedding** | `bge-m3` | ~1.2GB | `ollama pull bge-m3` |
+| **Reranker** | `BAAI/bge-reranker-v2-m3` | ~2.2GB | `pip install sentence-transformers torch` → `python scripts/download_reranker.py` |
+| **OCR 兜底**（可选） | rapidocr-onnxruntime + pypdfium2 | ~100MB | `pip install rapidocr-onnxruntime pypdfium2` |
+
+检查本机已有模型：
 ```powershell
 ollama list
 ```
+
+### 配置项
+
+所有模型和密钥配置通过 `settings.json`（**已加入 `.gitignore`，不会被提交**）：
+
+| 键 | 说明 | 默认值 |
+|----|------|--------|
+| `LLM_PROVIDER` | LLM 提供商：`ollama` / `deepseek` / `openai` | `ollama` |
+| `LLM_MODEL` | LLM 模型名 | `qwen3.5:9b` |
+| `LLM_URL` | LLM 服务地址 | `http://127.0.0.1:11434` |
+| `LLM_TOKEN` | DeepSeek / OpenAI API 密钥 | `""` |
+| `EMBED_MODEL` | Embedding 模型名 | `qwen3-embedding:4b` |
+| `EMBED_URL` | Embedding 服务地址（可独立于 LLM） | `http://127.0.0.1:11434` |
+
+> EMBED_URL 默认为本地 Ollama，可与 LLM_URL 不同（例如 LLM 用 DeepSeek API，Embedding 用本地 Ollama 的 bge-m3）。
 
 ## 安装
 
@@ -118,8 +134,11 @@ http://192.168.1.68:5173/
 ```powershell
 cd C:\Users\tangerine\.rag_v
 
+# 需要 DEBUG 日志时将下面这行取消注释：
+# $env:RAGV_LOG_LEVEL = "DEBUG"
+
 Start-Process -FilePath python `
-  -ArgumentList @('-m','uvicorn','app.api.server:app','--host','0.0.0.0','--port','8000') `
+  -ArgumentList @('-m','uvicorn','app.api.server:app','--host','0.0.0.0','--port','8000','--log-level','warning') `
   -WorkingDirectory (Get-Location) `
   -RedirectStandardOutput logs\dev-backend.out.log `
   -RedirectStandardError logs\dev-backend.err.log `
@@ -255,40 +274,82 @@ python -m app.cli kb delete demo_kb
 - `app/modules/session/`：会话、聊天、RAG 问答逻辑。
 - `ui/`：React 前端。
 - `kb/`：知识库文件与向量数据。
-- `sessions/`：会话配置和聊天记录。
+- `sessions/`：会话配置（含 query 预览预览）和聊天记录（SimpleChatStore JSON）。
 - `logs/`：后台运行日志。
-- `settings.json`：Ollama 地址和模型配置。
+- `settings.json`：LLM/Embedding 模型配置（已加入 `.gitignore`，本地专属）。
+- `openspec/`：OpenSpec 规范驱动开发工件（specs、变更记录、归档）。
 
 ## 日志与调试路线
 
-默认运行模式保持安静：成功的后端 API 请求和成功的前端 API 请求不会输出应用层耗时日志，也不会再要求 `[TIMING]` 或 `/api/performance`。
+默认运行模式保持安静，第三方库噪音（httpx、chromadb INFO、tqdm 进度条）已屏蔽。以下是不同调试场景的入口速查：
 
-后端日志：
+| 你想看什么 | 怎么做 |
+|-----------|--------|
+| 后端应用日志（INFO） | 默认就有，查看终端或 `logs/dev-backend.err.log` |
+| RAG 查询全链路（query→检索→LLM） | 开启 `RAGV_LOG_LEVEL=DEBUG` |
+| 前端 API 请求耗时 | 开启 `VITE_API_DEBUG=true` |
+| 检索召回质量分析（分阶段诊断） | 运行 `test/test_retrieval_diagnostic.py` |
+| uvicorn HTTP 访问日志 | 启动时加 `--log-level warning` 关闭 |
 
-- 前台运行时，查看启动后端的 PowerShell 窗口。
-- 后台运行时，查看 `logs/dev-backend.out.log` 和 `logs/dev-backend.err.log`。
-- 应用日志级别可用环境变量控制：
+---
+
+### 后端日志
+
+**在哪里看**
+
+| 运行方式 | 日志位置 |
+|---------|---------|
+| 前台（直接启动） | PowerShell 窗口 |
+| 后台（Start-Process） | `logs/dev-backend.err.log`（应用日志）/ `logs/dev-backend.out.log`（stdout） |
+
+**日志级别控制**
 
 ```powershell
+# 方式 1：环境变量（临时）
 $env:RAGV_LOG_LEVEL = "DEBUG"
 python -m uvicorn app.api.server:app --host 127.0.0.1 --port 8000
+
+# 方式 2：settings.json（持久）
+# {"env": {"RAGV_LOG_LEVEL": "DEBUG"}}
 ```
 
-也可以在 `settings.json` 的 `env` 中设置：
+#### RAG 查询 DEBUG 日志
 
-```json
-{
-  "env": {
-    "RAGV_LOG_LEVEL": "DEBUG"
-  }
-}
+`RAGV_LOG_LEVEL=DEBUG` 后，每次问答输出结构化日志，格式 `key=value` 方便 `grep`：
+
+```
+query | sync start session=光伏对话 kb=光伏信息 top_k=8 top_n=5 mode=hybrid query=数字化转型
+query | sync done  session=光伏对话 sources=6 elapsed=8.42s ans_len=892 score_min=0.32 score_max=0.97
+                     ans_pfx=数字化转型的具体要求包括以下方面：1...
+query | sync error session=光伏对话 elapsed=0.53s err=知识库不存在
 ```
 
-前端日志：
+包含字段：
 
-- 普通页面问题先看浏览器 DevTools 的 Console 和 Network。
-- 前端请求失败始终会通过 `console.error` 输出。
-- 成功请求和慢请求日志默认关闭；需要调试 API 代理或请求链路时启用：
+| 阶段 | 字段 | 说明 |
+|------|------|------|
+| **start** | `session` / `kb` / `top_k` / `top_n` / `mode` / `query` | 查询上下文 |
+| **done** | `sources` / `elapsed` / `ans_len` / `score_min~max` / `ans_pfx` | 来源数、耗时、答案长度、分数范围、答案预览 |
+
+#### 噪音已被消除
+
+| 来源 | 改前 | 改后 |
+|------|------|------|
+| uvicorn HTTP 访问日志 | 每个请求一行 `200 OK` | 后端加 `--log-level warning` 关闭 |
+| httpx HTTP 请求日志 | 每次 embed/LLM 调用一行 | 降至 WARNING，DEBUG 级才可见 |
+| tqdm 进度条 | embedding 时刷屏 | 全局关闭 |
+| 重排序模型 | 每次查询重新加载（~1s） | 进程级单例缓存 |
+
+---
+
+### 前端日志
+
+| 运行方式 | 日志位置 |
+|---------|---------|
+| 前台（`npm run dev`） | 浏览器 Console + Network 面板 |
+| 后台（Start-Process） | `logs/dev-frontend.out.log` / `logs/dev-frontend.err.log` |
+
+**前端 API 请求日志** — 默认只输出失败请求；需要查看成功请求和耗时：
 
 ```powershell
 cd C:\Users\tangerine\.rag_v\ui
@@ -296,22 +357,18 @@ $env:VITE_API_DEBUG = "true"
 npm run dev -- --host 127.0.0.1
 ```
 
-后台前端进程日志仍写入：
+---
 
-```text
-logs/dev-frontend.out.log
-logs/dev-frontend.err.log
-```
+### 检索诊断
 
-检索诊断：
-
-- 普通聊天请求不会默认输出 ChromaDB、BM25、RRF、Reranker 的分阶段诊断。
-- 需要排查召回质量时，显式运行：
+普通聊天不会输出检索各阶段的明细（ChromaDB、BM25、RRF、Reranker）。需要排查召回质量时：
 
 ```powershell
 python test/test_retrieval_diagnostic.py <kb_name> "<query>"
 ```
 
-- 诊断 JSON 报告写入 `test/diagnostic_output/`。
+诊断 JSON 报告写入 `test/diagnostic_output/`。
 
-根目录下的 `backend.log`、`backend_err.log`、`frontend.log`、`frontend_err.log` 只视为历史或临时文件；日常调试以 `logs/`、浏览器 Console/Network 和显式诊断报告为准。
+---
+
+> 根目录下的 `backend.log`、`backend_err.log`、`frontend.log`、`frontend_err.log` 为历史文件；日常调试以 `logs/`、浏览器 Console/Network 和显式诊断报告为准。
