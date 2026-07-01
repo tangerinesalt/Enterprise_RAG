@@ -161,7 +161,6 @@ class Indexer:
         index = VectorStoreIndex(
             nodes=nodes,
             storage_context=storage_context,
-            show_progress=True,
         )
 
         return collection.count()

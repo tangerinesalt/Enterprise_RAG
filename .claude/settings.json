@@ -5,7 +5,14 @@
       "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, @{N=\"CommandLine\";E={$_.CommandLine}} | Format-Table -AutoSize)",
       "PowerShell(Get-Process -Id 55988)",
       "PowerShell(Stop-Process -Id 55988 -Force)",
-      "PowerShell(Stop-Process -Id 55680 -Force)"
+      "PowerShell(Stop-Process -Id 55680 -Force)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }; Get-NetTCPConnection -LocalPort 5173 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }; Write-Output \"Services stopped\")",
+      "PowerShell($env:RAGV_LOG_LEVEL = \"DEBUG\"; Start-Process -WindowStyle Hidden -WorkingDirectory \\(Get-Location\\) -FilePath \"python\" -ArgumentList @\\('-m','uvicorn','app.api.server:app','--host','0.0.0.0','--port','8000','--log-level','warning'\\) -RedirectStandardOutput logs\\\\dev-backend.out.log -RedirectStandardError logs\\\\dev-backend.err.log; Write-Output \"backend PID: $\\(\\(Get-Process -Id $!\\).Id\\)\")",
+      "PowerShell($env:VITE_API_DEBUG = \"true\"; Start-Process -WindowStyle Hidden -WorkingDirectory \\(Join-Path \\(Get-Location\\) 'ui'\\) -FilePath \"npm\" -ArgumentList @\\('run','dev','--','--host','127.0.0.1'\\) -RedirectStandardOutput logs\\\\dev-frontend.out.log -RedirectStandardError logs\\\\dev-frontend.err.log; Write-Output \"frontend started\")",
+      "PowerShell($env:RAGV_LOG_LEVEL = \"DEBUG\"; $p = Start-Process -PassThru -WindowStyle Hidden -WorkingDirectory \\(Get-Location\\) -FilePath \"python\" -ArgumentList @\\('-m','uvicorn','app.api.server:app','--host','0.0.0.0','--port','8000','--log-level','warning'\\) -RedirectStandardOutput \\(Join-Path \\(Get-Location\\) \"logs\\\\dev-backend.out.log\"\\) -RedirectStandardError \\(Join-Path \\(Get-Location\\) \"logs\\\\dev-backend.err.log\"\\); Write-Output \"PID=$\\($p.Id\\)\")",
+      "PowerShell(Get-Process -Id 32792 -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id \\(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue\\).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; netstat -ano | Select-String \":8000 \" | Select-String \"LISTEN\"; Write-Output \"backend stopped\")"
     ]
   }
 }

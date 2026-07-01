@@ -47,12 +47,11 @@ Each knowledge base SHALL have its own independent ChromaDB instance at `kb/<nam
 
 ## MODIFIED Requirements
 
-### Requirement: BM25 index SHALL be built independently from vector index
+### Requirement: Index SHALL persist nodes for BM25
 
-The BM25 retriever SHALL build its index from raw source file paragraphs, separate from the SentenceSplitter chunking used for vector indexing.
+The indexing process SHALL save the chunked nodes list alongside the vector store so BM25 can use the same texts.
 
-#### Scenario: BM25 reads source files directly
-- **WHEN** BM25 index is constructed
-- **THEN** it reads `.txt` files from the KB's `files/` directory
-- **THEN** it splits text by `\n\n` to get paragraph-level units
-- **THEN** it builds its own tokenized corpus independent of vector index chunks
+#### Scenario: Nodes saved during indexing
+- **WHEN** `index_file` completes chunking and vector storage
+- **THEN** the chunked nodes list is saved to a per-knowledge-base cache (e.g., pickle)
+- **THEN** `_build_bm25_retriever` reads from this cache instead of source files

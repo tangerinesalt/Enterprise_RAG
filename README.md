@@ -258,3 +258,60 @@ python -m app.cli kb delete demo_kb
 - `sessions/`：会话配置和聊天记录。
 - `logs/`：后台运行日志。
 - `settings.json`：Ollama 地址和模型配置。
+
+## 日志与调试路线
+
+默认运行模式保持安静：成功的后端 API 请求和成功的前端 API 请求不会输出应用层耗时日志，也不会再要求 `[TIMING]` 或 `/api/performance`。
+
+后端日志：
+
+- 前台运行时，查看启动后端的 PowerShell 窗口。
+- 后台运行时，查看 `logs/dev-backend.out.log` 和 `logs/dev-backend.err.log`。
+- 应用日志级别可用环境变量控制：
+
+```powershell
+$env:RAGV_LOG_LEVEL = "DEBUG"
+python -m uvicorn app.api.server:app --host 127.0.0.1 --port 8000
+```
+
+也可以在 `settings.json` 的 `env` 中设置：
+
+```json
+{
+  "env": {
+    "RAGV_LOG_LEVEL": "DEBUG"
+  }
+}
+```
+
+前端日志：
+
+- 普通页面问题先看浏览器 DevTools 的 Console 和 Network。
+- 前端请求失败始终会通过 `console.error` 输出。
+- 成功请求和慢请求日志默认关闭；需要调试 API 代理或请求链路时启用：
+
+```powershell
+cd C:\Users\tangerine\.rag_v\ui
+$env:VITE_API_DEBUG = "true"
+npm run dev -- --host 127.0.0.1
+```
+
+后台前端进程日志仍写入：
+
+```text
+logs/dev-frontend.out.log
+logs/dev-frontend.err.log
+```
+
+检索诊断：
+
+- 普通聊天请求不会默认输出 ChromaDB、BM25、RRF、Reranker 的分阶段诊断。
+- 需要排查召回质量时，显式运行：
+
+```powershell
+python test/test_retrieval_diagnostic.py <kb_name> "<query>"
+```
+
+- 诊断 JSON 报告写入 `test/diagnostic_output/`。
+
+根目录下的 `backend.log`、`backend_err.log`、`frontend.log`、`frontend_err.log` 只视为历史或临时文件；日常调试以 `logs/`、浏览器 Console/Network 和显式诊断报告为准。

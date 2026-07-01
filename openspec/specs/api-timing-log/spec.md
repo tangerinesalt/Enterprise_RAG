@@ -1,33 +1,22 @@
 ## Purpose
 
-Provide backend timing logs and performance visibility for API requests and model calls.
+Backend timing logs have been removed from the default runtime behavior. Request-level timing is now available only through opt-in debug/profiling logging as defined by the logging-settings capability.
 
-## Requirements
+## History
 
-### Requirement: System SHALL log request timing automatically
+The following requirements were removed as part of the `redesign-logging-settings` change:
 
-Every HTTP request SHALL be logged with its processing time.
+### ~Requirement: System SHALL log request timing automatically~
 
-#### Scenario: Request logged
-- **WHEN** client sends `GET /api/kb`
-- **THEN** the terminal prints `[TIMING] GET /api/kb 鈫?0.003s`
+Every HTTP request SHALL be logged with its processing time.  
+**Removed**: Automatic timing logs added noise during normal debugging and are no longer required by the runtime logging policy.
 
-#### Scenario: Slow request warning
-- **WHEN** a request takes more than 1 second
-- **THEN** the log message includes a WARN indicator
+### ~Requirement: System SHALL track Ollama call timing~
 
-### Requirement: System SHALL track Ollama call timing
+Ollama Embedding and Chat calls SHALL be individually timed.  
+**Removed**: Always-on model call timing is a profiling concern, not a default runtime logging requirement. Use explicit profiling or diagnostic tooling for model latency investigations.
 
-Ollama Embedding and Chat calls SHALL be individually timed.
+### ~Requirement: API SHALL provide performance endpoint~
 
-#### Scenario: Embedding timed
-- **WHEN** `embed_texts()` is called
-- **THEN** the elapsed time is logged with label `ollama_embed`
-
-### Requirement: API SHALL provide performance endpoint
-
-The system SHALL expose `GET /api/performance` returning recent request timings.
-
-#### Scenario: Get performance data
-- **WHEN** client sends `GET /api/performance`
-- **THEN** response includes list of recent requests with method, path, and elapsed time
+The system SHALL expose `GET /api/performance` returning recent request timings.  
+**Removed**: The `/api/performance` endpoint existed only to support the removed timing collector and is no longer part of the default API contract. Use future explicit profiling tooling if performance summaries are needed.

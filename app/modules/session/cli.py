@@ -96,7 +96,7 @@ def cmd_list(args):
             print(f"{'='*50}")
             for c in chats:
                 marker = "* " if c["is_active"] else "  "
-                print(f"  {marker}{c['file']:40s} ({c['messages']} 条消息)")
+                print(f"  {marker}{c['file']:40s}")
         else:
             sessions = _session.list_all()
             if not sessions:

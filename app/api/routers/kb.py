@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 from app.api.schemas import KbCreateRequest, KbIndexRequest, KbReindexRequest
 from app.modules.kb_manager import KnowledgeBase, KnowledgeBaseError
 from app.modules.kb_manager.indexer import Indexer
-from app.utils.timing import timed
 
 router = APIRouter()
 
@@ -60,7 +59,6 @@ def get_kb(name: str):
 
 
 @router.post("/upload")
-@timed("kb_upload", warn=0.5, error=3.0)
 async def upload_kb(name: str = Form(...), files: list[UploadFile] = File(...)):
     """上传文件或文件夹到知识库"""
     try:
@@ -79,7 +77,6 @@ async def upload_kb(name: str = Form(...), files: list[UploadFile] = File(...)):
 
 
 @router.post("/index")
-@timed("kb_index", warn=1.0, error=10.0)
 def index_kb(body: KbIndexRequest):
     """索引文件/文件夹/全部"""
     try:
@@ -101,7 +98,6 @@ def index_kb(body: KbIndexRequest):
 
 
 @router.post("/reindex")
-@timed("kb_reindex", warn=1.0, error=10.0)
 def reindex_kb(body: KbReindexRequest):
     """重新索引文件"""
     try:

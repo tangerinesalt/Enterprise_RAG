@@ -1,11 +1,6 @@
-## Purpose
-
-Provide browser-side API timing logs so slow frontend requests can be identified during debugging. Timing logs are only produced when frontend debug logging is explicitly enabled; by default they are silent.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Frontend SHALL log API request timing
-
 The frontend API wrapper SHALL only record and print successful request timing to the browser console when frontend debug logging is explicitly enabled.
 
 #### Scenario: API call not logged by default

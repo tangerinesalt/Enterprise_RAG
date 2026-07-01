@@ -14,7 +14,6 @@ from app.api.schemas import (
     SessionConfigUpdateRequest,
 )
 from app.modules.session import SessionManager, SessionError
-from app.utils.timing import timed
 
 router = APIRouter()
 
@@ -96,7 +95,6 @@ def select_chat(body: SessionSelectChatRequest):
 
 
 @router.post("/chat")
-@timed("session_chat", warn=2.0, error=10.0)
 def chat(body: SessionChatRequest):
     """聊天：检索 → 生成 → 持久化"""
     try:

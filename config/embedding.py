@@ -16,3 +16,5 @@ def init_embedding():
         model_name=EMBED_MODEL,
         base_url=EMBED_URL,
     )
+    # 全局关闭 tqdm 进度条（检索阶段的 embedding 不刷屏）
+    Settings.show_progress = False

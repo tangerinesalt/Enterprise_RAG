@@ -9,6 +9,7 @@ SessionManager — 会话管理核心类。
 import os
 import json
 import shutil
+import time
 from threading import Lock
 from datetime import datetime
 from pathlib import Path
@@ -25,15 +26,38 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.retrieval import build_retriever
+from app.utils.logging import get_logger
 
 
 # ── 中文分词器（用于 BM25）─────────────────
 # 会话根目录
 SESSION_ROOT = str((Path(__file__).resolve().parent.parent.parent.parent / "sessions").resolve())
 
+logger = get_logger(__name__)
 _kb = KnowledgeBase()
 _models_initialized = False
 _models_lock = Lock()
+
+# ── 重排序模型缓存（避免每次查询重复加载）───
+_reranker_instance = None
+_reranker_lock = Lock()
+
+
+def _get_reranker(top_n: int = 5) -> SentenceTransformerRerank:
+    """全局缓存 SentenceTransformerRerank，避免每次查询重复加载模型。"""
+    global _reranker_instance
+    if _reranker_instance is not None:
+        _reranker_instance.top_n = top_n
+        return _reranker_instance
+    with _reranker_lock:
+        if _reranker_instance is not None:
+            _reranker_instance.top_n = top_n
+            return _reranker_instance
+        _reranker_instance = SentenceTransformerRerank(
+            model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
+            top_n=top_n,
+        )
+        return _reranker_instance
 
 
 def _ensure_models_initialized() -> bool:
@@ -165,16 +189,22 @@ class SessionManager:
             path = os.path.join(SESSION_ROOT, d)
             if os.path.isdir(path):
                 config = self._load_config(d)
-                chats = self.list_chats(d)
+                # 直接数 .json 文件数，避免打开每个聊天文件反序列化
+                cdir = self.chats_dir(d)
+                total_chats = len([
+                    f for f in os.listdir(cdir)
+                    if f.endswith(".json")
+                ]) if os.path.isdir(cdir) else 0
                 result.append({
                     "name": d,
                     "kb_name": config.get("kb_name"),
                     "active_chat": config.get("active_chat"),
-                    "total_chats": len(chats),
+                    "total_chats": total_chats,
                 })
         return result
 
     def list_chats(self, name: str) -> list[dict]:
+        """列出会话的聊天文件（仅文件名和活跃标记），不读取文件内容。"""
         self._ensure_exists(name)
         cdir = self.chats_dir(name)
         if not os.path.isdir(cdir):
@@ -184,13 +214,9 @@ class SessionManager:
         result = []
         for f in sorted(os.listdir(cdir)):
             if f.endswith(".json"):
-                fpath = os.path.join(cdir, f)
-                msg_count = self._count_chat_messages(fpath)
                 result.append({
                     "file": f,
                     "is_active": f == active,
-                    "messages": msg_count,
-                    "size": os.path.getsize(fpath),
                 })
         return result
 
@@ -256,10 +282,8 @@ class SessionManager:
             {"type": "done",    "chat_file": "..."}
             {"type": "error",   "message": "..."}
         """
-        import time as _time
-        _t = _time.time
-
         try:
+            _t0 = time.monotonic()
             self._ensure_exists(name)
             config = self._load_config(name)
 
@@ -283,11 +307,8 @@ class SessionManager:
                 raise SessionError(f"知识库 '{kb_name}' 不存在")
 
             # 加载历史 + 初始化模型
-            t0 = _t()
             store = SimpleChatStore.from_persist_path(chat_path)
-            did_init = _ensure_models_initialized()
-            init_state = "init" if did_init else "cached"
-            print(f"[TIMING] load_history+models_{init_state}: {_t()-t0:.3f}s")
+            _ensure_models_initialized()
 
             # 加载 ChromaDB
             db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
@@ -310,10 +331,12 @@ class SessionManager:
             top_k = config.get("top_k", self.DEFAULT_TOP_K)
             top_n = config.get("top_n", self.DEFAULT_TOP_N)
             retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
-            reranker = SentenceTransformerRerank(
-                model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
-                top_n=top_n,
-            )
+
+            # 日志
+            logger.debug("query | stream start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
+                         name, kb_name, top_k, top_n, retriever_mode, chat_file, query)
+            
+            reranker = _get_reranker(top_n=top_n)
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
             sp = config.get("system_prompt", "")
             if sp and "{context_str}" not in sp:
@@ -323,19 +346,15 @@ class SessionManager:
                 text_qa_template=PromptTemplate(sp) if sp else None,
                 streaming=True,
             )
-            t0 = _t()
             response = query_engine.query(query)
-            print(f"[TIMING] retrieval: {_t()-t0:.3f}s")
 
             answer_buf = []
             for chunk in response.response_gen:
                 if chunk:
                     answer_buf.append(chunk)
                     yield {"type": "token", "token": chunk}
-                    t0 = _t()
 
             answer = "".join(answer_buf)
-            print(f"[TIMING] generation: {_t()-t0:.3f}s")
 
             # 提取来源
             sources = []
@@ -356,17 +375,30 @@ class SessionManager:
                     additional_kwargs={"sources": sources} if sources else None,
                 ),
             )
-            t0 = _t()
             store.persist(chat_path)
-            print(f"[TIMING] persist: {_t()-t0:.3f}s")
+            
+            # 日志
+            elapsed = time.monotonic() - _t0
+            ans_preview = answer[:100].replace("\n", " ")
+            source_scores = [s["score"] for s in sources if s["score"] is not None]
+            score_summary = ""
+            if source_scores:
+                score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
+            logger.debug(
+                "query | stream done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
+                name, len(sources), elapsed, len(answer), score_summary, chat_file, ans_preview,
+            )
 
             yield {"type": "sources", "sources": sources}
             yield {"type": "done", "chat_file": chat_file}
 
         except SessionError as e:
+            elapsed = time.monotonic() - _t0
+            logger.debug("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
             yield {"type": "error", "message": str(e)}
         except Exception as e:
-            print(f"\033[91m[ERROR] chat_stream: {e}\033[0m")
+            elapsed = time.monotonic() - _t0
+            logger.error("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
             yield {"type": "error", "message": f"内部错误: {e}"}
 
     # ── 聊天核心 ───────────────────────────
@@ -378,6 +410,7 @@ class SessionManager:
         如果 chat_file 指定 → 继续该聊天
         如果 chat_file 未指定 → 自动新建聊天
         """
+        _t0 = time.monotonic()
         self._ensure_exists(name)
         config = self._load_config(name)
 
@@ -401,13 +434,8 @@ class SessionManager:
             raise SessionError(f"知识库 '{kb_name}' 不存在")
 
         # 阶段 1：加载历史 + 初始化模型
-        import time as _time
-        _t = _time.time
-        t0 = _t()
         store = SimpleChatStore.from_persist_path(chat_path)
-        did_init = _ensure_models_initialized()
-        init_state = "init" if did_init else "cached"
-        print(f"[TIMING] load_history+models_{init_state}: {_t()-t0:.3f}s")
+        _ensure_models_initialized()
 
         # 加载 ChromaDB
         db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
@@ -427,15 +455,13 @@ class SessionManager:
         store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
 
         # 阶段 2：检索 + 生成
-        t0 = _t()
         top_k = config.get("top_k", self.DEFAULT_TOP_K)
         top_n = config.get("top_n", self.DEFAULT_TOP_N)
         retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
+        logger.debug("query | sync start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
+                     name, kb_name, top_k, top_n, retriever_mode, chat_file, query)
         retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-        reranker = SentenceTransformerRerank(
-            model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
-            top_n=top_n,
-        )
+        reranker = _get_reranker(top_n=top_n)
         sp = config.get("system_prompt", "")
         if sp and "{context_str}" not in sp:
             sp += "\n\n上下文内容：\n---------------------\n{context_str}\n---------------------\n问题：{query_str}\n回答："
@@ -444,7 +470,6 @@ class SessionManager:
             text_qa_template=PromptTemplate(sp) if sp else None,
         )
         response = query_engine.query(query)
-        print(f"[TIMING] retrieval+generation: {_t()-t0:.3f}s")
 
         # 提取来源
         sources = []
@@ -471,9 +496,18 @@ class SessionManager:
         )
 
         # 阶段 3：持久化
-        t0 = _t()
         store.persist(chat_path)
-        print(f"[TIMING] persist: {_t()-t0:.3f}s")
+
+        elapsed = time.monotonic() - _t0
+        ans_preview = answer[:100].replace("\n", " ")
+        source_scores = [s["score"] for s in sources if s["score"] is not None]
+        score_summary = ""
+        if source_scores:
+            score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
+        logger.debug(
+            "query | sync done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
+            name, len(sources), elapsed, len(answer), score_summary, chat_file, ans_preview,
+        )
 
         return {
             "query": query,

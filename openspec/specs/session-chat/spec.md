@@ -65,6 +65,16 @@ The RRF fusion SHALL apply vector_weight=0.7 and bm25_weight=0.3 instead of equa
 - **THEN** weighted RRF rank is #3 (unchanged from vector), not degraded
 - **THEN** the RRF score spread is at least 5x wider than equal-weight RRF
 
+### Requirement: RRF fusion SHALL use node_id-level dedup
+
+With shared chunk texts, RRF fusion's node_id dedup SHALL correctly identify common results from both retrieval paths.
+
+#### Scenario: Dual-path bonus for shared chunks
+- **WHEN** a chunk appears in both vector results and BM25 results
+- **THEN** RRF identifies it by matching node_id
+- **THEN** the chunk receives RRF scores from both paths (vector_weight + bm25_weight)
+- **THEN** the chunk appears once in the fused list (dedup), with the combined score
+
 ### Requirement: Retrieval mode SHALL support vector-only
 
 The session config SHALL support `retriever_mode` field: `"hybrid"` (default) or `"vector-only"`.

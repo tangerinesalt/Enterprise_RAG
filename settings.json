@@ -1,18 +1,19 @@
 {
   "env": {
+    "RAGV_LOG_LEVEL": "DEBUG",
     "EMBED_URL": "http://127.0.0.1:11434/",
     "EMBED_MODEL": "bge-m3",
 
     "_LLM_PROVIDER_COMMENT": "可选: ollama (默认), deepseek, openai",
-    "LLM_PROVIDER": "deepseek",
+    "LLM_PROVIDER": "ollama",
 
     "_LLM_URL_COMMENT": "LLM 接口地址 (Ollama 默认 http://127.0.0.1:11434)",
     "LLM_URL": "",
 
     "_LLM_MODEL_COMMENT": "deepseek→deepseek-chat,openai→gpt-4o,Ollama→qwen3.5:9b",
-    "LLM_MODEL": "deepseek-v4-flash",
+    "LLM_MODEL": "qwen3.5:9b",
 
     "_LLM_TOKEN_COMMENT": "deepseek/openai 需要填写 API token",
-    "LLM_TOKEN": "sk-2eafac14824944458905ed07d472d560"
+    "LLM_TOKEN": ""
   }
 }
