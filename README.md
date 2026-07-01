@@ -51,14 +51,43 @@ ollama list
 
 ## 安装
 
-后端依赖：
+### 后端
 
 ```powershell
 cd C:\Users\tangerine\.rag_v
-pip install -r requirements-web.txt
+
+# 1. 基础 Web 框架
+pip install fastapi uvicorn python-multipart
+
+# 2. RAG 核心：LlamaIndex + ChromaDB + 中文分词
+pip install llama-index chromadb jieba pypdf
+
+# 3. LLM 驱动（按需选装）
+pip install llama-index-llms-ollama   # Ollama 本地模式
+pip install llama-index-llms-openai   # DeepSeek / OpenAI 远端模式
+
+# 4. Embedding 驱动（按需选装）
+pip install llama-index-embeddings-ollama   # Ollama 本地模式
+
+# 5. 重排序模型（必需）
+pip install sentence-transformers torch
+python scripts/download_reranker.py
+
+# 6. OCR 兜底（可选，PDF 文字提取失败时自动启用）
+pip install rapidocr-onnxruntime pypdfium2
 ```
 
-前端依赖：
+各组之间独立——你可以只装需要的。例如仅用 DeepSeek API + Ollama Embedding：
+```powershell
+pip install fastapi uvicorn python-multipart
+pip install llama-index chromadb jieba pypdf
+pip install llama-index-llms-openai
+pip install llama-index-embeddings-ollama
+pip install sentence-transformers torch
+python scripts/download_reranker.py
+```
+
+### 前端
 
 ```powershell
 cd C:\Users\tangerine\.rag_v\ui
