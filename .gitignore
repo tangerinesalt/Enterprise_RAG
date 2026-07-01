@@ -45,6 +45,7 @@ data/
 # --- Environment & Secrets ---
 .env
 *.env.local
+settings.json
 *.key
 *.pem
 service-account*.json
