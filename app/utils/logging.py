@@ -45,6 +45,8 @@ def configure_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     # 静默 chromadb 的 INFO 噪音
     logging.getLogger("chromadb").setLevel(logging.WARNING)
+    # 静默 multipart 的 DEBUG 输出（文件上传时逐块打印 on_part_data）
+    logging.getLogger("multipart").setLevel(logging.WARNING)
 
     _CONFIGURED = True
 

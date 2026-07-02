@@ -95,8 +95,51 @@ def strip_page_repeats(
     return documents
 
 
+def _fix_orphan_table_fragments(all_nodes: list) -> list:
+    """后处理：为丢失列头的表格碎片 node 补全表头。
+
+    SentenceSplitter 不感知 Markdown 表格边界，切分后部分 node 含有
+    表格数据（`| ... |`）但丢失了列头分离线（`---|---|`）。
+    此函数从最近的完整表头 node 继承列头，补到碎片 node 前面。
+    """
+    current_header = None  # 列头行，如 "| 名称 | 审批人 |"
+    current_sep = None     # 分离线，如 "|-----|-------|"
+    fixed_count = 0
+    total_nodes = len(all_nodes)
+
+    import re
+    sep_pattern = re.compile(r"^\|[-|\s]+\|$", re.MULTILINE)
+
+    for node in all_nodes:
+        text = node.text
+        # 检查是否包含表格分离线（|---|）
+        has_separator = bool(sep_pattern.search(text))
+
+        if has_separator:
+            # 此 node 包含完整表头 → 缓存列头和分离线
+            lines = text.split("\n")
+            for j, line in enumerate(lines):
+                if sep_pattern.match(line.strip()):
+                    if j > 0:
+                        current_header = lines[j - 1].strip()
+                    current_sep = line.strip()
+                    break
+
+        elif "|" in text and current_header and current_sep:
+            # 有管道符但没有分离线 → orphan 碎片 → 补表头
+            node.text = current_header + "\n" + current_sep + "\n" + node.text
+            fixed_count += 1
+
+    if fixed_count:
+        logger.info(
+            "table_fix | fixed %d orphan table fragments across %d nodes",
+            fixed_count, total_nodes,
+        )
+    return all_nodes
+
+
 def chunk_documents(documents: list) -> list:
-    """自定义分块：strip_page_repeats → SentenceSplitter(512/128) → metadata 继承。"""
+    """自定义分块：strip_page_repeats → SentenceSplitter → table_fix → metadata。"""
     # 跨页重复文本剥离（页眉页脚去重）
     documents = strip_page_repeats(documents)
 
@@ -120,5 +163,8 @@ def chunk_documents(documents: list) -> list:
                     node.metadata[key] = doc.metadata[key]
 
         all_nodes.extend(nodes)
+
+    # 后处理：修复被切碎的表格 column header
+    all_nodes = _fix_orphan_table_fragments(all_nodes)
 
     return all_nodes
