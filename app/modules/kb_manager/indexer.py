@@ -32,34 +32,49 @@ _kb = KnowledgeBase()
 
 # ── OCR 兜底 ─────────────────────────────────────
 
-def _ocr_pdf(file_path: str) -> str:
+def _ocr_pdf(file_path: str) -> list[str]:
+    """OCR 逐页识别 PDF，返回每页文本列表。
+
+    使用 pypdfium2 渲染每页为位图 → RapidOCR 识别文字。
+    返回 list[str]，每个元素为一页的识别结果（空页返回空字符串）。
+
+    参数：
+        file_path: PDF 文件路径
+
+    返回：
+        每页文本的列表，长度等于 PDF 页数
+    """
     try:
         from rapidocr_onnxruntime import RapidOCR
     except ImportError:
-        return ""
+        return []
     try:
         import pypdfium2 as pdfium
     except ImportError:
-        return ""
+        return []
 
     try:
         ocr = RapidOCR()
-        all_lines = []
         pdf = pdfium.PdfDocument(file_path)
+        page_texts = []
+
         for i in range(len(pdf)):
             page = pdf[i]
             bitmap = page.render(scale=2.0)
             img = bitmap.to_numpy()
             result, _ = ocr(img)
+            page_lines = []
             if result:
                 for item in result:
                     if item[1]:
-                        all_lines.append(item[1])
+                        page_lines.append(item[1])
+            page_texts.append("\n".join(page_lines))
             page.close()
+
         pdf.close()
-        return "\n".join(all_lines)
+        return page_texts
     except Exception:
-        return ""
+        return []
 
 
 # ── RobustPDFReader ──────────────────────────────
@@ -85,12 +100,15 @@ class RobustPDFReader(PDFReader):
         text_len = sum(len(t) for t, _ in docs)
 
         if (text_len < 50 or empty / max(total, 1) > 0.5) and ENABLE_OCR_FALLBACK:
-            ocr_text = _ocr_pdf(file_path)
-            if ocr_text.strip():
-                return [Document(
-                    text=ocr_text,
-                    metadata={"file_path": file_path, "page_label": "ocr"},
-                )]
+            page_texts = _ocr_pdf(file_path)
+            if page_texts:
+                return [
+                    Document(
+                        text=pt,
+                        metadata={"file_path": file_path, "page_label": f"ocr_p{i+1}"},
+                    )
+                    for i, pt in enumerate(page_texts)
+                ]
 
         return [
             Document(
