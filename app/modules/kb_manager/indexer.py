@@ -19,7 +19,7 @@ from llama_index.core import (
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.readers.file import PDFReader
 
-from config.settings import ENABLE_OCR_FALLBACK, ENABLE_TABLE_RECOGNITION
+from config.settings import ENABLE_OCR_FALLBACK
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.kb_manager.chunker import chunk_documents
@@ -33,18 +33,40 @@ init_models()
 _kb = KnowledgeBase()
 
 
+# ── OCR 表格识别可用性检测（首次调用自动探测）───
+_table_recognition_available = None
+
+
+def _check_table_recognition() -> bool:
+    """检测 rapid-table 是否可用，结果缓存避免重复 import。"""
+    global _table_recognition_available
+    if _table_recognition_available is None:
+        try:
+            from rapid_table import RapidTable
+            RapidTable()
+            _table_recognition_available = True
+            logger.info("table recognition enabled (rapid-table available)")
+        except ImportError:
+            _table_recognition_available = False
+            logger.info("table recognition disabled (rapid-table not installed)")
+        except Exception as e:
+            _table_recognition_available = False
+            logger.warning("table recognition disabled: %s", e)
+    return _table_recognition_available
+
+
 # ── OCR 兜底 ─────────────────────────────────────
 
 def _ocr_pdf(file_path: str) -> list[str]:
     """OCR 逐页识别 PDF，返回每页文本列表。
 
-    如果 ENABLE_TABLE_RECOGNITION=True 且 rapid-table 可用，
-    自动启用表格结构识别（RapidTable SLANet）。
+    首次调用时自动检测 rapid-table 是否可用。
+    如果可用则启用表格结构识别（RapidTable SLANet），
     否则使用 RapidOCR 纯文本识别。
 
     返回 list[str]，每个元素为一页的识别结果（空页返回空字符串）。
     """
-    if ENABLE_TABLE_RECOGNITION:
+    if _check_table_recognition():
         try:
             return _ocr_pdf_with_tables(file_path)
         except Exception:

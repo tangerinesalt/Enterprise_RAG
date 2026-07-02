@@ -28,6 +28,7 @@
 | **Embedding** | `bge-m3` | ~1.2GB | 文档向量化 |
 | **Reranker** | `BAAI/bge-reranker-v2-m3` | ~2.2GB | 检索结果重排序 |
 | **OCR 兜底**（可选） | rapidocr-onnxruntime + pypdfium2 | ~100MB | PDF 文字提取失败时自动启用 |
+| **表格识别**（可选） | rapid-table（SLANet Plus ONNX） | 7.4MB | 扫描件表格结构化识别，需 `ENABLE_TABLE_RECOGNITION=true` |
 
 安装命令见下方「安装」节。
 
@@ -43,8 +44,11 @@
 | `LLM_TOKEN` | DeepSeek / OpenAI API 密钥 | `""` |
 | `EMBED_MODEL` | Embedding 模型名 | `qwen3-embedding:4b` |
 | `EMBED_URL` | Embedding 服务地址（可独立于 LLM） | `http://127.0.0.1:11434` |
+| `RAGV_LOG_LEVEL` | 日志级别：`DEBUG` / `INFO` / `WARNING` | （不设置 = INFO） |
 
-> EMBED_URL 默认为本地 Ollama，可与 LLM_URL 不同（例如 LLM 用 DeepSeek API，Embedding 用本地 Ollama 的 bge-m3）。
+> `RAGV_LOG_LEVEL=DEBUG` 时输出 RAG 查询全链路日志（query→检索→LLM）。
+
+表格识别为自动检测——`pip install rapid-table` 后首次索引自动启用，无需额外配置。
 
 ## 安装
 
@@ -71,7 +75,13 @@ pip install sentence-transformers torch
 python scripts/download_reranker.py
 
 # 6. OCR 兜底（可选，PDF 文字提取失败时自动启用）
-pip install rapidocr-onnxruntime pypdfium2
+pip install rapidocr-onnxruntime pypdfium2 rapidocr
+
+# 7. 表格识别（可选，扫描件表格结构化提取，ENABLE_TABLE_RECOGNITION=true）
+pip install rapid-table
+
+# 8. pypdf 表格提取（可选，已安装 pdfplumber 时自动启用）
+pip install pdfplumber
 ```
 
 **Ollama 模型**（本地模式时需要）：
@@ -89,6 +99,11 @@ pip install llama-index-llms-openai
 pip install llama-index-embeddings-ollama
 pip install sentence-transformers torch
 python scripts/download_reranker.py
+```
+
+有表格类文档（扫描件或 PDF）时，建议额外安装：
+```powershell
+pip install pdfplumber rapid-table rapidocr
 ```
 
 ### 前端

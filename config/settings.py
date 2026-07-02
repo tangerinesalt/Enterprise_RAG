@@ -54,5 +54,4 @@ CHUNK_SIZE = 512
 CHUNK_OVERLAP = 128
 CHUNK_PARAGRAPH_SEPARATOR = "\n\n"
 
-# 扫描件表格识别（需要 rapid-table 包）
-ENABLE_TABLE_RECOGNITION = False
+# 扫描件表格识别（自动检测 rapid-table 包，无需配置）
