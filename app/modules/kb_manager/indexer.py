@@ -6,6 +6,7 @@ Indexer — 基于 llama_index 的文档解析、分块、Embedding、索引。
 
 import os
 import sys
+import logging
 
 import chromadb
 from llama_index.core import (
@@ -18,10 +19,12 @@ from llama_index.core import (
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.readers.file import PDFReader
 
-from config.settings import ENABLE_OCR_FALLBACK
+from config.settings import ENABLE_OCR_FALLBACK, ENABLE_TABLE_RECOGNITION
 from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.kb_manager.chunker import chunk_documents
+
+logger = logging.getLogger(__name__)
 
 
 # ── 全局初始化（一次配好 Embedding + LLM）──
@@ -35,15 +38,23 @@ _kb = KnowledgeBase()
 def _ocr_pdf(file_path: str) -> list[str]:
     """OCR 逐页识别 PDF，返回每页文本列表。
 
-    使用 pypdfium2 渲染每页为位图 → RapidOCR 识别文字。
+    如果 ENABLE_TABLE_RECOGNITION=True 且 rapid-table 可用，
+    自动启用表格结构识别（RapidTable SLANet）。
+    否则使用 RapidOCR 纯文本识别。
+
     返回 list[str]，每个元素为一页的识别结果（空页返回空字符串）。
-
-    参数：
-        file_path: PDF 文件路径
-
-    返回：
-        每页文本的列表，长度等于 PDF 页数
     """
+    if ENABLE_TABLE_RECOGNITION:
+        try:
+            return _ocr_pdf_with_tables(file_path)
+        except Exception:
+            logger.warning("table recognition failed, falling back to plain OCR", exc_info=True)
+
+    return _ocr_pdf_plain(file_path)
+
+
+def _ocr_pdf_plain(file_path: str) -> list[str]:
+    """RapidOCR 纯文本识别。"""
     try:
         from rapidocr_onnxruntime import RapidOCR
     except ImportError:
@@ -77,15 +88,198 @@ def _ocr_pdf(file_path: str) -> list[str]:
         return []
 
 
+# ── 扫描件表格识别（RapidTable）────────────────
+
+def _html_table_to_markdown(html: str) -> str:
+    """将 HTML table 转为 Markdown 格式。
+
+    处理 colspan 合并单元格（用重复空列填充），
+    不支持 rowspan（超出部分丢弃）。
+    """
+    if "<table" not in html:
+        return html.strip()
+
+    import re
+    rows = []
+    # 提取所有 <tr> 内容
+    tr_pattern = re.compile(r"<tr[^>]*>(.*?)</tr>", re.DOTALL | re.IGNORECASE)
+    td_pattern = re.compile(r"<t[hd][^>]*>(.*?)</t[hd]>", re.DOTALL | re.IGNORECASE)
+    colspan_pattern = re.compile(r"colspan\s*=\s*['\"]?(\d+)['\"]?", re.IGNORECASE)
+
+    for tr_match in tr_pattern.finditer(html):
+        tr_content = tr_match.group(1)
+        cells = []
+        for td_match in td_pattern.finditer(tr_content):
+            td_html = td_match.group(0)
+            cell_text = re.sub(r"<[^>]+>", "", td_match.group(1)).strip()
+            # 检查 colspan
+            colspan = 1
+            cs = colspan_pattern.search(td_html)
+            if cs:
+                colspan = int(cs.group(1))
+            cells.extend([cell_text] + [""] * (colspan - 1))
+        if cells:
+            rows.append(cells)
+
+    if not rows:
+        return html.strip()
+
+    col_count = max(len(r) for r in rows)
+
+    def fmt(cells):
+        padded = cells + [""] * (col_count - len(cells))
+        return "| " + " | ".join(padded) + " |"
+
+    lines = [fmt(rows[0])]
+    lines.append("|" + "|".join("---" for _ in range(col_count)) + "|")
+    for row in rows[1:]:
+        lines.append(fmt(row))
+
+    return "\n".join(lines)
+
+
+def _ocr_pdf_with_tables(file_path: str) -> list[str]:
+    """RapidTable 表格识别(含单元格OCR)，无表页回退 RapidOCR。"""
+    try:
+        from rapid_table import RapidTable
+    except ImportError:
+        logger.warning("rapid-table not installed, falling back to plain OCR")
+        return _ocr_pdf_plain(file_path)
+
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return _ocr_pdf_plain(file_path)
+
+    try:
+        engine = RapidTable()
+        pdf = pdfium.PdfDocument(file_path)
+        page_texts = []
+
+        for i in range(len(pdf)):
+            page = pdf[i]
+            bitmap = page.render(scale=2.0)
+            img = bitmap.to_numpy()
+            page.close()
+
+            # 尝试 RapidTable 表格识别
+            try:
+                from PIL import Image
+                import io
+                buf = io.BytesIO()
+                Image.fromarray(img).save(buf, format="PNG")
+                buf.seek(0)
+                result = engine(buf.read())
+            except Exception:
+                result = None
+
+            if result and hasattr(result, "pred_htmls") and result.pred_htmls:
+                # 有表格 → 转为 Markdown
+                html = result.pred_htmls[0]
+                md = _html_table_to_markdown(html)
+                page_texts.append(md)
+            else:
+                # 无表格 → RapidOCR 纯文本
+                from rapidocr_onnxruntime import RapidOCR
+                ocr = RapidOCR()
+                ocr_result, _ = ocr(img)
+                lines = []
+                if ocr_result:
+                    for item in ocr_result:
+                        if item[1]:
+                            lines.append(item[1])
+                page_texts.append("\n".join(lines))
+
+        pdf.close()
+        return page_texts
+    except Exception:
+        logger.warning("RapidTable failed for %s, falling back", file_path, exc_info=True)
+        return _ocr_pdf_plain(file_path)
+
+
+# ── PDF 表格抽取（pdfplumber）───────────────────
+
+def _table_to_markdown(table: list[list[str]]) -> str:
+    """将 pdfplumber 的表格数据转为 Markdown 格式。
+
+    输出示例：
+        | 版本 | 修订日期 | 修订内容 | 修订人 |
+        |------|---------|---------|--------|
+        | B/0 | 2023.6.1 | 全文改版新订 | 人力资源部 |
+    """
+    if not table or not table[0]:
+        return ""
+
+    rows = []
+    for row in table:
+        # 跳过完全空行
+        cleaned = [c.strip() if c else "" for c in row]
+        if all(not c for c in cleaned):
+            continue
+        rows.append(cleaned)
+
+    if not rows:
+        return ""
+
+    # 计算每列最大宽度用于对齐（不限死长度，保证可读即可）
+    col_count = max(len(r) for r in rows)
+
+    def format_row(cells):
+        padded = cells + [""] * (col_count - len(cells))
+        return "| " + " | ".join(padded[:col_count]) + " |"
+
+    lines = [format_row(rows[0])]
+    # 分隔行
+    lines.append("|" + "|".join("---" for _ in range(col_count)) + "|")
+    for row in rows[1:]:
+        lines.append(format_row(row))
+
+    return "\n".join(lines)
+
+
+def _extract_tables_pdfplumber(file_path: str) -> dict[int, list[str]]:
+    """用 pdfplumber 提取 PDF 中的表格，返回 {页码0: [Markdown表格, ...]}。
+
+    对无表格或扫描件返回空 dict，不阻塞后续处理。
+    """
+    try:
+        import pdfplumber as _plumber
+    except ImportError:
+        logger.warning("pdfplumber not installed, skipping table extraction")
+        return {}
+
+    try:
+        result: dict[int, list[str]] = {}
+        with _plumber.open(file_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                tables = page.extract_tables()
+                if not tables:
+                    continue
+                md_tables = []
+                for t in tables:
+                    md = _table_to_markdown(t)
+                    if md:
+                        md_tables.append(md)
+                if md_tables:
+                    result[page_num] = md_tables
+        return result
+    except Exception as e:
+        logger.warning("pdfplumber table extraction failed for %s: %s", file_path, e)
+        return {}
+
+
 # ── RobustPDFReader ──────────────────────────────
 
 class RobustPDFReader(PDFReader):
-    """支持 OCR 兜底的 PDF 读取器。按页返回 Document。"""
+    """支持 OCR 兜底 + pdfplumber 表格抽取的 PDF 读取器。按页返回 Document。"""
 
     def load_data(self, *args, **kwargs):
         file_path = kwargs.get("file_path", args[0] if args else None)
         if not (file_path and os.path.exists(file_path)):
             return super().load_data(*args, **kwargs)
+
+        # ① pdfplumber 抽取表格（非扫描件有表格数据，扫描件返回空）
+        tables = _extract_tables_pdfplumber(file_path)
 
         import pypdf
         reader = pypdf.PdfReader(file_path)
@@ -93,6 +287,10 @@ class RobustPDFReader(PDFReader):
         docs = []
         for page_num, page in enumerate(reader.pages):
             text = (page.extract_text() or "").strip()
+            # ② 合并该页的表格 Markdown 到文本中
+            page_tables = tables.get(page_num, [])
+            if page_tables:
+                text += "\n\n" + "\n\n".join(page_tables)
             docs.append((text, page_num))
 
         total = len(docs)
