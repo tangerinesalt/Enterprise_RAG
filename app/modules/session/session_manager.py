@@ -289,7 +289,23 @@ class SessionManager:
             self._ensure_exists(name)
             config = self._load_config(name)
 
-            # 确定聊天文件
+            # ⚡ 先检查 KB 绑定和向量状态，确认无误后再创建聊天文件
+            kb_name = config.get("kb_name")
+            if not kb_name:
+                raise SessionError(f"会话 '{name}' 未绑定知识库")
+            if not _kb.exists(kb_name):
+                raise SessionError(f"知识库 '{kb_name}' 不存在")
+
+            db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
+            try:
+                chroma_collection = db.get_collection("kb_index")
+            except Exception:
+                raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据，请先在知识库中索引文件")
+
+            if chroma_collection.count() == 0:
+                raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
+
+            # 确定聊天文件（此时 KB 状态已确认无误）
             if chat_file:
                 chat_path = os.path.join(self.chats_dir(name), chat_file)
                 if not os.path.isfile(chat_path):
@@ -301,23 +317,9 @@ class SessionManager:
 
             yield {"type": "start", "chat_file": chat_file}
 
-            # 检查绑定的知识库
-            kb_name = config.get("kb_name")
-            if not kb_name:
-                raise SessionError(f"会话 '{name}' 未绑定知识库")
-            if not _kb.exists(kb_name):
-                raise SessionError(f"知识库 '{kb_name}' 不存在")
-
-            # 加载历史 + 初始化模型
+            # 加载历史
             store = SimpleChatStore.from_persist_path(chat_path)
             _ensure_models_initialized()
-
-            # 加载 ChromaDB
-            db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
-            try:
-                chroma_collection = db.get_collection("kb_index")
-            except Exception:
-                raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据")
 
             vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
             index = VectorStoreIndex.from_vector_store(vector_store=vector_store)

@@ -6,6 +6,7 @@ KnowledgeBase — 知识库管理核心类。
     vector_db/  ChromaDB 持久化目录
 """
 
+import json
 import os
 import shutil
 
@@ -38,6 +39,54 @@ class KnowledgeBase:
     def vector_db_path(self, name: str) -> str:
         return os.path.join(self.root, name, "vector_db")
 
+    # ── 索引状态持久化 ──────────────────────
+
+    def _index_status_path(self, name: str) -> str:
+        return os.path.join(self.root, name, ".index_status.json")
+
+    def _load_index_status(self, name: str) -> dict:
+        path = self._index_status_path(name)
+        if not os.path.isfile(path):
+            return {"files": {}}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"files": {}}
+
+    def _save_index_status(self, name: str, data: dict):
+        path = self._index_status_path(name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def set_file_status(self, name: str, filename: str, status: str, chunks: int | None = None):
+        """设置文件的索引状态。status: 'pending' | 'indexed'"""
+        data = self._load_index_status(name)
+        entry = data["files"].get(filename, {})
+        entry["status"] = status
+        if chunks is not None:
+            entry["chunks"] = chunks
+        if status == "indexed":
+            import datetime
+            entry["indexed_at"] = datetime.datetime.now().isoformat()
+        elif status == "pending":
+            entry["chunks"] = None
+            entry["indexed_at"] = None
+        data["files"][filename] = entry
+        self._save_index_status(name, data)
+
+    def get_file_status(self, name: str, filename: str) -> dict:
+        """获取文件索引状态。返回 {"status": str, "chunks": int|null, "indexed_at": str|null}"""
+        data = self._load_index_status(name)
+        return data["files"].get(filename, {"status": "pending", "chunks": None, "indexed_at": None})
+
+    def remove_file_status(self, name: str, filename: str):
+        """删除文件的索引状态条目。"""
+        data = self._load_index_status(name)
+        data["files"].pop(filename, None)
+        self._save_index_status(name, data)
+
     # ── CRUD ────────────────────────────────
 
     def create(self, name: str) -> str:
@@ -47,6 +96,8 @@ class KnowledgeBase:
             raise KnowledgeBaseError(f"知识库 '{name}' 已存在")
         os.makedirs(self.files_path(name), exist_ok=True)
         os.makedirs(self.vector_db_path(name), exist_ok=True)
+        # 创建空的索引状态文件，确保后续操作可直接读写
+        self._save_index_status(name, {"files": {}})
         return path
 
     def destroy(self, name: str):
@@ -113,8 +164,10 @@ class KnowledgeBase:
         if not os.path.isfile(source_path):
             raise KnowledgeBaseError(f"文件不存在: {source_path}")
         filename = os.path.basename(source_path)
-        dest = self.file_path(name, filename)
+        dest_name = self._unique_filename(name, filename)
+        dest = self.file_path(name, dest_name)
         shutil.copy2(source_path, dest)
+        self.set_file_status(name, dest_name, "pending")
         return dest
 
     def remove_file(self, name: str, filename: str):
@@ -127,20 +180,29 @@ class KnowledgeBase:
             )
         os.remove(fpath)
 
+    def _unique_filename(self, name: str, filename: str) -> str:
+        """生成 files/ 中不重复的文件名，同名时加 _1, _2 后缀。"""
+        fdir = self.files_path(name)
+        if not os.path.exists(os.path.join(fdir, filename)):
+            return filename
+        base, ext = os.path.splitext(filename)
+        i = 1
+        while True:
+            candidate = f"{base}_{i}{ext}"
+            if not os.path.exists(os.path.join(fdir, candidate)):
+                return candidate
+            i += 1
+
     # ── 文件夹操作 ──────────────────────────
 
     def upload_folder(self, name: str, source_dir: str) -> list[str]:
         """
-        将文件夹递归复制到知识库（保持目录结构）。
-        返回复制的文件列表（相对路径）。
+        将文件夹递归复制到知识库，所有文件平铺到 files/ 根目录。
+        同名文件自动重命名：file.pdf → file_1.pdf。返回复制的文件名列表。
         """
         self.ensure_exists(name)
         if not os.path.isdir(source_dir):
             raise KnowledgeBaseError(f"目录不存在: {source_dir}")
-
-        folder_name = os.path.basename(os.path.normpath(source_dir))
-        dest_root = os.path.join(self.files_path(name), folder_name)
-        os.makedirs(dest_root, exist_ok=True)
 
         copied = []
         for root, dirs, files in os.walk(source_dir):
@@ -149,11 +211,10 @@ class KnowledgeBase:
                 if f in IGNORED_FILES or f.startswith("._"):
                     continue
                 src = os.path.join(root, f)
-                rel = os.path.relpath(src, source_dir)
-                dst = os.path.join(dest_root, rel)
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                shutil.copy2(src, dst)
-                copied.append(folder_name + "/" + rel.replace("\\", "/"))
+                dest_name = self._unique_filename(name, f)
+                shutil.copy2(src, self.file_path(name, dest_name))
+                self.set_file_status(name, dest_name, "pending")
+                copied.append(dest_name)
 
         return copied
 
@@ -183,7 +244,8 @@ class KnowledgeBase:
         if not os.path.isfile(fpath):
             raise KnowledgeBaseError(f"文件 '{filename}' 不存在")
         os.remove(fpath)
-        # 同时清理索引中的向量
+        # 清理索引状态和向量
+        self.remove_file_status(name, filename)
         from app.modules.kb_manager.indexer import Indexer
         Indexer().delete_vectors(name, filename)
 
@@ -200,6 +262,8 @@ class KnowledgeBase:
             )
 
         files = self.list_folder_files(name, folder_name)
+        for f in files:
+            self.remove_file_status(name, f)
         shutil.rmtree(fdir)
         return files
 

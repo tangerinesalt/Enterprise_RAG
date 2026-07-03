@@ -54,8 +54,8 @@ def cmd_upload(args):
         elif os.path.isdir(args.path):
             files = _kb.upload_folder(args.name, args.path)
             folder_name = os.path.basename(os.path.normpath(args.path))
-            print(f"[OK] 已复制文件夹 '{folder_name}'（{len(files)} 个文件）")
-            print(f"      提示: 运行 'kb index {args.name} {folder_name}' 来索引")
+            print(f"[OK] 已从文件夹 '{folder_name}' 平铺复制 {len(files)} 个文件")
+            print(f"      提示: 运行 'kb index {args.name} --all' 来索引全部")
     except KnowledgeBaseError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
@@ -98,11 +98,10 @@ def cmd_upload_and_index(args):
             count = _indexer.index_file(args.name, filename)
             print(f"[OK] 上传并索引完成: {filename}（{count} 个块）")
         elif os.path.isdir(args.path):
-            folder_name = os.path.basename(os.path.normpath(args.path))
             files = _kb.upload_folder(args.name, args.path)
-            print(f"[上传] 已复制文件夹 '{folder_name}'（{len(files)} 个文件）")
-            print(f"[索引] 正在索引文件夹...")
-            results = _indexer.index_folder(args.name, folder_name)
+            print(f"[上传] 已从文件夹平铺复制 {len(files)} 个文件")
+            print(f"[索引] 正在索引全部文件...")
+            results = _indexer.index_all(args.name)
             _print_index_results(results)
     except (KnowledgeBaseError, FileNotFoundError) as e:
         print(f"[ERROR] {e}")

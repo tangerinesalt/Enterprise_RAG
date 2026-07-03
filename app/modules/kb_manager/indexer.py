@@ -16,6 +16,7 @@ from llama_index.core import (
     Settings,
     Document,
 )
+from llama_index.core.schema import MetadataMode
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.readers.file import PDFReader
 
@@ -403,6 +404,112 @@ class Indexer:
 
         return collection.count()
 
+    # ── 流式索引（逐 chunk 报告进度）───────────
+
+    def index_file_stream(self, kb_name: str, filename: str):
+        """
+        Generator: 对指定文件执行索引，逐 chunk 产出 SSE 进度事件。
+
+        事件类型:
+            index_start:   {"type": "index_start",   "file": str, "total_chunks": int}
+            index_progress:{"type": "index_progress", "file": str, "current": int, "total": int, "pct": int}
+            index_done:    {"type": "index_done",     "file": str, "chunks": int}
+        """
+        _kb.ensure_exists(kb_name)
+        file_path = _kb.file_path(kb_name, filename)
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"知识库内文件不存在: {file_path}")
+
+        # 先清理同名文件的旧向量
+        self.delete_vectors(kb_name, filename)
+
+        db, collection = self._get_chroma_collection(kb_name)
+        vector_store = ChromaVectorStore(chroma_collection=collection)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+        # 读取文件
+        file_dir = os.path.dirname(file_path) or "."
+        reader = SimpleDirectoryReader(
+            input_dir=file_dir,
+            input_files=[file_path],
+            file_extractor=self._pdf_extractor,
+        )
+        documents = reader.load_data()
+
+        if not documents:
+            yield {"type": "index_start", "file": filename, "total_chunks": 0}
+            yield {"type": "index_done", "file": filename, "chunks": 0}
+            return
+
+        # 分块
+        nodes = chunk_documents(documents)
+        total = len(nodes)
+
+        yield {"type": "index_start", "file": filename, "total_chunks": total}
+
+        # 预计算 embedding，逐 chunk 报告进度
+        embed_model = Settings.embed_model
+        for i, node in enumerate(nodes):
+            if node.embedding is None:
+                text = node.get_content(metadata_mode=MetadataMode.EMBED)
+                node.embedding = embed_model.get_text_embedding(text)
+            pct = round((i + 1) / total * 100)
+            yield {"type": "index_progress", "file": filename, "current": i + 1, "total": total, "pct": pct}
+
+        # 构建索引（VectorStoreIndex 复用预计算 embedding，跳过重算）
+        VectorStoreIndex(
+            nodes=nodes,
+            storage_context=storage_context,
+        )
+
+        chunk_count = collection.count()
+        _kb.set_file_status(kb_name, filename, "indexed", chunks=chunk_count)
+        yield {"type": "index_done", "file": filename, "chunks": chunk_count}
+
+    def index_folder_stream(self, kb_name: str, folder_name: str):
+        """
+        Generator: 递归索引文件夹中所有文件，所有文件的事件合并到一个流。
+        """
+        _kb.ensure_exists(kb_name)
+        files = _kb.list_folder_files(kb_name, folder_name)
+
+        if not files:
+            raise FileNotFoundError(f"文件夹 '{folder_name}' 中没有可索引的文件")
+
+        for rel_path in files:
+            try:
+                yield from self.index_file_stream(kb_name, rel_path)
+            except Exception as e:
+                yield {"type": "index_error", "file": rel_path, "message": str(e)}
+
+    def index_all_stream(self, kb_name: str):
+        """
+        Generator: 索引知识库 files/ 中所有文件，所有文件的事件合并到一个流。
+        跳过已经索引的文件。
+        """
+        _kb.ensure_exists(kb_name)
+        fdir = _kb.files_path(kb_name)
+        if not os.path.isdir(fdir):
+            return
+
+        # 加载索引状态，用于跳过已索引文件
+        index_status = _kb._load_index_status(kb_name)
+        file_count = 0
+        for root, _, files in os.walk(fdir):
+            for f in files:
+                rel = os.path.relpath(os.path.join(root, f), fdir)
+                rel = rel.replace("\\", "/")
+                # 跳过已索引文件
+                if index_status.get("files", {}).get(rel, {}).get("status") == "indexed":
+                    continue
+                try:
+                    yield from self.index_file_stream(kb_name, rel)
+                    file_count += 1
+                except Exception as e:
+                    yield {"type": "index_error", "file": rel, "message": str(e)}
+
+        yield {"type": "index_done", "status": "all_complete", "files": file_count}
+
     # ── 按文件名删除向量 ─────────────────────
 
     def delete_vectors(self, kb_name: str, filename: str) -> int:
@@ -461,26 +568,28 @@ class Indexer:
     def index_all(self, kb_name: str) -> dict:
         """
         索引知识库 files/ 中所有文件（递归遍历所有子目录）。
-        返回 {filename: chunk_count} 映射。
+        跳过已经索引的文件。返回 {filename: chunk_count} 映射。
         """
         _kb.ensure_exists(kb_name)
         fdir = _kb.files_path(kb_name)
         if not os.path.isdir(fdir):
             return {}
 
-        # 收集所有文件（递归）
-        all_files = []
+        # 加载索引状态，用于跳过已索引文件
+        index_status = _kb._load_index_status(kb_name)
+
+        results = {}
         for root, _, files in os.walk(fdir):
             for f in files:
                 rel = os.path.relpath(os.path.join(root, f), fdir)
-                all_files.append(rel.replace("\\", "/"))
-
-        results = {}
-        for rel_path in sorted(all_files):
-            try:
-                count = self.index_file(kb_name, rel_path)
-                results[rel_path] = count
-            except Exception as e:
-                results[rel_path] = f"ERROR: {e}"
+                rel = rel.replace("\\", "/")
+                # 跳过已索引文件
+                if index_status.get("files", {}).get(rel, {}).get("status") == "indexed":
+                    continue
+                try:
+                    count = self.index_file(kb_name, rel)
+                    results[rel] = count
+                except Exception as e:
+                    results[rel] = f"ERROR: {e}"
 
         return results

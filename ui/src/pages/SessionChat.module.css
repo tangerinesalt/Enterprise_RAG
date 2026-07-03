@@ -326,6 +326,14 @@
   color: var(--color-text-muted);
 }
 
+/* 对话状态指示器 */
+.statusLine {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
 /* 输入区域 */
 .inputArea {
   display: flex;

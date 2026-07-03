@@ -1,7 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from '../pages/SessionChat.module.css';
 import MarkdownMessage from './MarkdownMessage';
 import ChatInput from './ChatInput';
+
+// ── 加载动画参数 ───────────────────────────
+const LOADING_TEXTS = ['Thinking', 'Searching', 'Loading', 'Researching'];
+const DOT_CYCLE = [1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1]; // 1→6→1 点模式
+const STEPS_PER_CYCLE = DOT_CYCLE.length;                // 11
+const CYCLES_PER_TEXT = 3;                               // 每个文字点循环次数
+const STEPS_PER_TEXT = STEPS_PER_CYCLE * CYCLES_PER_TEXT; // 33
+const ANIMATION_INTERVAL_MS = 250;
 
 interface Message {
   role: string;
@@ -26,9 +34,33 @@ export default function ChatArea({
 }: Props) {
   const msgEndRef = useRef<HTMLDivElement>(null);
 
+  // ── 加载动画状态 ─────────────────────────
+  const [animStep, setAnimStep] = useState(0);
+
+  // 最后一个 assistant 消息有内容 → 答案已开始出现，停止动画
+  const lastMsg = messages[messages.length - 1];
+  const hasAnswer = lastMsg?.role === 'assistant' && lastMsg.content.length > 0;
+
+  useEffect(() => {
+    if (!loading || hasAnswer) {
+      setAnimStep(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setAnimStep(prev => prev + 1);
+    }, ANIMATION_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [loading, hasAnswer]);
+
+  // 从步数计算当前文字和点数
+  const stepInText = animStep % STEPS_PER_TEXT;
+  const textIndex = Math.floor(animStep / STEPS_PER_TEXT) % LOADING_TEXTS.length;
+  const dotCount = DOT_CYCLE[stepInText % STEPS_PER_CYCLE];
+  const statusText = LOADING_TEXTS[textIndex] + '.'.repeat(dotCount);
+
   useEffect(() => {
     msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, loading]);
 
   return (
     <div className={styles.chatArea}>
@@ -65,6 +97,9 @@ export default function ChatArea({
                 )}
               </div>
             ))}
+            {loading && !hasAnswer && (
+              <div className={styles.statusLine}>{statusText}</div>
+            )}
             <div ref={msgEndRef} />
           </div>
         </>

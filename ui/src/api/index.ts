@@ -22,7 +22,13 @@ async function req<T>(url: string, options?: RequestInit): Promise<T> {
     });
     const elapsed = performance.now() - t0;
     logApiSuccess(method, url, elapsed);
-    const data = await res.json();
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200) || '非 JSON 响应'}`);
+    }
     if (!data.ok) throw new Error(data.error || 'Unknown error');
     return data.data as T;
   } catch (e) {
@@ -43,6 +49,9 @@ export interface FileItem {
   size: number;
   size_str: string;
   type: 'file' | 'folder';
+  indexed?: 'pending' | 'indexing' | 'indexed';
+  chunks?: number | null;
+  indexed_at?: string | null;
 }
 
 export const kbApi = {
@@ -77,9 +86,74 @@ export const kbApi = {
   indexAll: (name: string) => req<{ indexed: number }>('/kb/index', {
     method: 'POST', body: JSON.stringify({ name, all: true }),
   }),
+  reindex: (name: string, filename: string) => req<{ filename: string; chunks: number }>('/kb/reindex', {
+    method: 'POST', body: JSON.stringify({ name, filename }),
+  }),
   deleteFile: (name: string, target: string) => req(`/kb/${name}/files?filename=${encodeURIComponent(target)}`, {
     method: 'DELETE',
   }),
+  indexStream: (
+    name: string,
+    callbacks: {
+      onStart?: (file: string, totalChunks: number) => void;
+      onProgress?: (file: string, current: number, total: number, pct: number) => void;
+      onDone?: (file: string, chunks: number) => void;
+      onAllDone?: (files: number) => void;
+      onError?: (file: string, message: string) => void;
+    },
+    target?: string,
+    all?: boolean,
+  ): Promise<void> => {
+    const { onStart, onProgress, onDone, onAllDone, onError } = callbacks;
+    return fetch(`${BASE}/kb/index/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, target, all }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+
+        let sepIdx: number;
+        while ((sepIdx = buf.indexOf('\n\n')) !== -1) {
+          const block = buf.slice(0, sepIdx);
+          buf = buf.slice(sepIdx + 2);
+
+          let eventType = '';
+          let dataStr = '';
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event: ')) eventType = line.slice(7);
+            else if (line.startsWith('data: ')) dataStr = line.slice(6);
+          }
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+            if (eventType === 'index_start') onStart?.(data.file, data.total_chunks);
+            else if (eventType === 'index_progress') onProgress?.(data.file, data.current, data.total, data.pct);
+            else if (eventType === 'index_done') {
+              if (data.status === 'all_complete') onAllDone?.(data.files);
+              else onDone?.(data.file, data.chunks);
+            }
+            else if (eventType === 'index_error') onError?.(data.file, data.message);
+          } catch {
+            // Ignore malformed data blocks
+          }
+        }
+      }
+    });
+  },
 };
 
 export interface SessionItem {
@@ -129,13 +203,14 @@ export const sessionApi = {
     callbacks: {
       signal?: AbortSignal;
       onToken?: (token: string) => void;
+      onPhase?: (phase: string) => void;
       onSources?: (sources: SourceItem[]) => void;
       onDone?: (chat_file: string) => void;
       onError?: (error: string) => void;
     },
     chat_file?: string,
   ): Promise<void> => {
-    const { signal, onToken, onSources, onDone, onError } = callbacks;
+    const { signal, onToken, onPhase, onSources, onDone, onError } = callbacks;
     const t0 = performance.now();
     const url = '/session/chat/stream';
     return fetch(`${BASE}${url}`, {
@@ -178,6 +253,7 @@ export const sessionApi = {
           try {
             const data = JSON.parse(dataStr);
             if (eventType === 'token') onToken?.(data.token);
+            else if (eventType === 'phase') onPhase?.(data.phase);
             else if (eventType === 'sources') onSources?.(data.sources);
             else if (eventType === 'done') onDone?.(data.chat_file);
             else if (eventType === 'error') onError?.(data.message);
