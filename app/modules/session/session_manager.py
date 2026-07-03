@@ -275,21 +275,53 @@ class SessionManager:
 
     def chat_stream(self, name: str, query: str, chat_file: str = None):
         """
-        流式聊天 Generator。
+        Stream chat generator.
 
-        逐 token 生成 SSE 事件 dict：
+        Yields SSE event dicts:
             {"type": "start",   "chat_file": "..."}
             {"type": "token",   "token": "..."}
             {"type": "sources", "sources": [...]}
             {"type": "done",    "chat_file": "..."}
             {"type": "error",   "message": "..."}
         """
+        chat_path = None
+        store = None
+        _t0 = time.monotonic()
+
+        def persist_error_message(message: str):
+            if store is None or chat_path is None:
+                return
+            store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=f"❌ {message}"))
+            store.persist(chat_path)
+
         try:
-            _t0 = time.monotonic()
             self._ensure_exists(name)
             config = self._load_config(name)
 
-            # ⚡ 先检查 KB 绑定和向量状态，确认无误后再创建聊天文件
+            if chat_file:
+                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                if not os.path.isfile(chat_path):
+                    raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+            else:
+                chat_file = self.new_chat(name)
+                config = self._load_config(name)
+                chat_path = os.path.join(self.chats_dir(name), chat_file)
+
+            yield {"type": "start", "chat_file": chat_file}
+
+            store = SimpleChatStore.from_persist_path(chat_path)
+            store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
+            store.persist(chat_path)
+
+            if query:
+                _cfg = self._load_config(name)
+                _previews = _cfg.get("chat_previews", {})
+                if chat_file not in _previews:
+                    _preview = query[:15].replace("\n", " ")
+                    _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
+                    _cfg["chat_previews"] = _previews
+                    self._save_config(name, _cfg)
+
             kb_name = config.get("kb_name")
             if not kb_name:
                 raise SessionError(f"会话 '{name}' 未绑定知识库")
@@ -305,20 +337,6 @@ class SessionManager:
             if chroma_collection.count() == 0:
                 raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
 
-            # 确定聊天文件（此时 KB 状态已确认无误）
-            if chat_file:
-                chat_path = os.path.join(self.chats_dir(name), chat_file)
-                if not os.path.isfile(chat_path):
-                    raise SessionError(f"聊天文件 '{chat_file}' 不存在")
-            else:
-                chat_file = self.new_chat(name)
-                config = self._load_config(name)
-                chat_path = os.path.join(self.chats_dir(name), chat_file)
-
-            yield {"type": "start", "chat_file": chat_file}
-
-            # 加载历史
-            store = SimpleChatStore.from_persist_path(chat_path)
             _ensure_models_initialized()
 
             vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
@@ -328,23 +346,18 @@ class SessionManager:
             if vector_count == 0:
                 raise SessionError(f"知识库 '{kb_name}' 中没有向量数据")
 
-            # 追加用户消息
-            store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
-
-            # 流式检索 + 生成
             top_k = config.get("top_k", self.DEFAULT_TOP_K)
             top_n = config.get("top_n", self.DEFAULT_TOP_N)
             retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
 
-            # 日志
             logger.debug("query | stream start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
                          name, kb_name, top_k, top_n, retriever_mode, chat_file, query)
-            
+
             reranker = _get_reranker(top_n=top_n)
             retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
             sp = config.get("system_prompt", "")
             if sp and "{context_str}" not in sp:
-                sp += "\n\n上下文内容：\n---------------------\n{context_str}\n---------------------\n问题：{query_str}\n回答："
+                sp += "\n\n\u4e0a\u4e0b\u6587\u5185\u5bb9\uff1a\n---------------------\n{context_str}\n---------------------\n\u95ee\u9898\uff1a{query_str}\n\u56de\u7b54\uff1a"
             query_engine = RetrieverQueryEngine.from_args(
                 retriever=retriever, node_postprocessors=[reranker],
                 text_qa_template=PromptTemplate(sp) if sp else None,
@@ -360,7 +373,6 @@ class SessionManager:
 
             answer = "".join(answer_buf)
 
-            # 提取来源
             sources = []
             if hasattr(response, "source_nodes") and response.source_nodes:
                 for node in response.source_nodes:
@@ -370,7 +382,6 @@ class SessionManager:
                         "score": round(float(score), 4) if score is not None else None,
                     })
 
-            # 持久化
             store.add_message(
                 name,
                 ChatMessage(
@@ -381,17 +392,6 @@ class SessionManager:
             )
             store.persist(chat_path)
 
-            # 首次写入后保存 query 预览到会话配置
-            if query:
-                _cfg = self._load_config(name)
-                _previews = _cfg.get("chat_previews", {})
-                if chat_file not in _previews:
-                    _preview = query[:15].replace("\n", " ")
-                    _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
-                    _cfg["chat_previews"] = _previews
-                    self._save_config(name, _cfg)
-
-            # 日志
             elapsed = time.monotonic() - _t0
             ans_preview = answer[:100].replace("\n", " ")
             source_scores = [s["score"] for s in sources if s["score"] is not None]
@@ -409,13 +409,19 @@ class SessionManager:
         except SessionError as e:
             elapsed = time.monotonic() - _t0
             logger.debug("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
+            persist_error_message(str(e))
+            yield {"type": "error", "message": str(e)}
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            elapsed = time.monotonic() - _t0
+            logger.error("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
+            persist_error_message(str(e))
             yield {"type": "error", "message": str(e)}
         except Exception as e:
             elapsed = time.monotonic() - _t0
             logger.error("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
-            yield {"type": "error", "message": f"内部错误: {e}"}
-
-    # ── 聊天核心 ───────────────────────────
+            message = f"内部错误: {e}"
+            persist_error_message(message)
+            yield {"type": "error", "message": message}
 
     def chat(self, name: str, query: str, chat_file: str = None) -> dict:
         """

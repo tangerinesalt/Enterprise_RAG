@@ -115,7 +115,6 @@ export default function SessionChat() {
 
     // 按需创建聊天：空白状态下提交时先创建新聊天文件
     let chatFile = activeChat;
-    const isNewChat = !chatFile;
     if (!chatFile) {
       try {
         const res = await sessionApi.newChat(name);
@@ -165,34 +164,35 @@ export default function SessionChat() {
       },
       onError: (err) => {
         abortRef.current = null;
-        // 知识库无向量等预检错误 → 弹窗提示；仅新创建的空聊天才删除
+        const showErrorMessage = () => {
+          setMessages(prev => {
+            const msgs = [...prev];
+            const last = { ...msgs[msgs.length - 1] };
+            last.content = `❌ ${err}`;
+            msgs[msgs.length - 1] = last;
+            return msgs;
+          });
+        };
+
+        // 知识库无向量等预检错误 → 保留新聊天并写入错误消息
         const isKbError = err.includes('没有向量') || err.includes('未找到索引') || err.includes('未绑定知识库');
         if (isKbError) {
-          if (isNewChat && chatFile) {
-            sessionApi.deleteChat(name!, chatFile).catch(() => {});
-            setActiveChat(null);
-          } else {
-            // 有历史的旧聊天：写一条错误消息到对话中
-            setMessages(prev => {
-              const msgs = [...prev];
-              const last = { ...msgs[msgs.length - 1] };
-              last.content = `❌ ${err}`;
-              msgs[msgs.length - 1] = last;
-              return msgs;
-            });
-          }
+          showErrorMessage();
           setLoading(false);
           load();
           alert('⚠️ 知识库中还没有索引数据\n\n请先在知识库中上传并索引文件，然后再开始对话。');
           return;
         }
-        setMessages(prev => {
-          const msgs = [...prev];
-          const last = { ...msgs[msgs.length - 1] };
-          last.content = `❌ 错误: ${err}`;
-          msgs[msgs.length - 1] = last;
-          return msgs;
-        });
+        // 模型初始化错误 → 弹窗提示
+        const isModelError = err.includes('Ollama') || err.includes('模型') || err.includes('Embedding');
+        if (isModelError) {
+          showErrorMessage();
+          setLoading(false);
+          load();
+          alert(`⚠️ 模型加载失败\n\n${err}`);
+          return;
+        }
+        showErrorMessage();
         setLoading(false);
         load();
       },
