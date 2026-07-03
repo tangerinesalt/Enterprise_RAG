@@ -1,0 +1,120 @@
+@import '../styles/tokens.css';
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  color: var(--color-text);
+}
+
+.createForm {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 10px var(--space-md);
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s;
+}
+
+.row:hover {
+  background: var(--color-bg-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.rowName {
+  font-weight: 500;
+}
+
+.rowMeta {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+}
+
+.empty {
+  color: var(--color-text-muted);
+}
+
+.btnPrimary {
+  padding: 6px 14px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+}
+
+.btnPrimary:hover {
+  background: var(--color-primary-hover);
+}
+
+.btnPrimary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.btnSec {
+  padding: 6px 14px;
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+}
+
+.btnSec:hover {
+  background: var(--color-border-light);
+}
+
+.btnDanger {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-lg);
+  padding: 4px var(--space-sm);
+  border-radius: var(--radius-sm);
+}
+
+.btnDanger:hover {
+  background: var(--color-bg-hover);
+}
+
+.input {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  flex: 1;
+}
+
+.input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+  border-color: transparent;
+}

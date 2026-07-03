@@ -1,0 +1,39 @@
+@import '../styles/tokens.css';
+
+.nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-border-light);
+  background: var(--color-bg-nav);
+  padding: 0 var(--space-lg);
+}
+
+.tab {
+  padding: var(--space-md) var(--space-xl);
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--color-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.tabActive {
+  composes: tab;
+  font-weight: 600;
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}

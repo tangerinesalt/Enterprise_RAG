@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import styles from './MarkdownMessage.module.css';
 
 // Only load common languages to keep bundle small
 const SUPPORTED_LANGUAGES = ['python', 'javascript', 'js', 'typescript', 'ts', 'bash', 'sh', 'json', 'sql', 'yaml', 'yml', 'markdown', 'md', 'text', 'powershell', 'ps1', 'dockerfile', 'diff', 'xml', 'html', 'css'];
@@ -28,18 +29,12 @@ export default function MarkdownMessage({ content }: Props) {
 
           if (match && SUPPORTED_LANGUAGES.includes(lang)) {
             return (
-              <div style={{ position: 'relative', margin: '12px 0', borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '4px 12px', background: '#f3f4f6', fontSize: 12, color: '#6b7280',
-                }}>
+              <div className={styles.codeBlock}>
+                <div className={styles.codeHeader}>
                   <span>{lang}</span>
                   <button
                     onClick={() => copyToClipboard(codeStr)}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      fontSize: 12, color: '#6b7280', padding: '2px 6px',
-                    }}
+                    className={styles.copyBtn}
                     title="复制代码"
                   >📋</button>
                 </div>
@@ -58,10 +53,7 @@ export default function MarkdownMessage({ content }: Props) {
           // Inline code or unsupported language
           if (!match) {
             return (
-              <code style={{
-                background: '#f3f4f6', padding: '2px 6px', borderRadius: 3,
-                fontSize: '0.9em', fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-              }} {...props}>
+              <code className={styles.inlineCode} {...props}>
                 {children}
               </code>
             );
@@ -69,54 +61,47 @@ export default function MarkdownMessage({ content }: Props) {
 
           // Fallback: plain pre/code for unsupported languages
           return (
-            <pre style={{
-              background: '#f9fafb', padding: 12, borderRadius: 6,
-              overflow: 'auto', fontSize: 13, border: '1px solid #e5e7eb',
-            }}>
+            <pre className={styles.preBlock}>
               <code className={className} {...props}>{children}</code>
             </pre>
           );
         },
         // Style other markdown elements
-        h1: ({ children }) => <h1 style={{ fontSize: 20, margin: '16px 0 8px', borderBottom: '1px solid #e5e7eb', paddingBottom: 4 }}>{children}</h1>,
-        h2: ({ children }) => <h2 style={{ fontSize: 18, margin: '14px 0 6px' }}>{children}</h2>,
-        h3: ({ children }) => <h3 style={{ fontSize: 16, margin: '12px 0 4px' }}>{children}</h3>,
-        ul: ({ children }) => <ul style={{ paddingLeft: 24, margin: '8px 0' }}>{children}</ul>,
-        ol: ({ children }) => <ol style={{ paddingLeft: 24, margin: '8px 0' }}>{children}</ol>,
-        li: ({ children }) => <li style={{ margin: '2px 0' }}>{children}</li>,
+        h1: ({ children }) => <h1 className={styles.h1}>{children}</h1>,
+        h2: ({ children }) => <h2 className={styles.h2}>{children}</h2>,
+        h3: ({ children }) => <h3 className={styles.h3}>{children}</h3>,
+        ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
+        ol: ({ children }) => <ol className={styles.list}>{children}</ol>,
+        li: ({ children }) => <li className={styles.listItem}>{children}</li>,
         a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: '#2563eb', textDecoration: 'underline' }}>
+          <a href={href} target="_blank" rel="noopener noreferrer" className={styles.link}>
             {children}
           </a>
         ),
         blockquote: ({ children }) => (
-          <blockquote style={{
-            borderLeft: '3px solid #d1d5db', margin: '8px 0',
-            padding: '4px 12px', color: '#6b7280', background: '#f9fafb',
-          }}>
+          <blockquote className={styles.blockquote}>
             {children}
           </blockquote>
         ),
         table: ({ children }) => (
-          <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+          <div className={styles.tableWrapper}>
+            <table className={styles.table}>
               {children}
             </table>
           </div>
         ),
         th: ({ children }) => (
-          <th style={{ border: '1px solid #d1d5db', padding: '6px 10px', background: '#f3f4f6', fontWeight: 600, textAlign: 'left' }}>
+          <th className={styles.th}>
             {children}
           </th>
         ),
         td: ({ children }) => (
-          <td style={{ border: '1px solid #d1d5db', padding: '6px 10px' }}>
+          <td className={styles.td}>
             {children}
           </td>
         ),
-        hr: () => <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />,
-        p: ({ children }) => <p style={{ margin: '8px 0' }}>{children}</p>,
+        hr: () => <hr className={styles.hr} />,
+        p: ({ children }) => <p className={styles.paragraph}>{children}</p>,
       }}
     >
       {content}

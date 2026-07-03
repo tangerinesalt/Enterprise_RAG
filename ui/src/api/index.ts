@@ -127,6 +127,7 @@ export const sessionApi = {
     name: string,
     query: string,
     callbacks: {
+      signal?: AbortSignal;
       onToken?: (token: string) => void;
       onSources?: (sources: SourceItem[]) => void;
       onDone?: (chat_file: string) => void;
@@ -134,13 +135,14 @@ export const sessionApi = {
     },
     chat_file?: string,
   ): Promise<void> => {
-    const { onToken, onSources, onDone, onError } = callbacks;
+    const { signal, onToken, onSources, onDone, onError } = callbacks;
     const t0 = performance.now();
     const url = '/session/chat/stream';
     return fetch(`${BASE}${url}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, query, chat_file }),
+      signal,
     }).then(async (res) => {
       if (!res.ok) {
         const text = await res.text();
@@ -187,6 +189,8 @@ export const sessionApi = {
 
       logApiSuccess('POST', url, performance.now() - t0);
     }).catch((err) => {
+      // AbortError 是主动中止导致的，不触发 onError
+      if ((err as DOMException)?.name === 'AbortError') return;
       logApiError('POST', url, performance.now() - t0, err);
       onError?.(String(err));
     });
