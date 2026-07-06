@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { sessionApi, kbApi } from '../api';
-import type { ChatFile, KbItem, SessionItem } from '../api';
+import type { ChatFile, KbItem, SessionItem, SessionStreamError } from '../api';
 import SessionSidebar from '../components/SessionSidebar';
 import ChatArea from '../components/ChatArea';
 import styles from './SessionChat.module.css';
@@ -76,9 +76,24 @@ export default function SessionChat() {
     load();
   };
 
-  const handleNewChat = () => {
-    setActiveChat(null);
+  const handleSelectChat = (chatFile: string) => {
     setMessages([]);
+    setActiveChat(chatFile);
+    if (!name) return;
+    sessionApi.selectChat(name, chatFile).catch(console.error);
+  };
+
+  const handleNewChat = async () => {
+    if (!name) return;
+    try {
+      const res = await sessionApi.newChat(name);
+      setActiveChat(res.chat_file);
+      setMessages([]);
+      await load();
+    } catch (e) {
+      console.error(e);
+      alert(`❌ 创建聊天失败\n\n${e}`);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -162,20 +177,19 @@ export default function SessionChat() {
         setLoading(false);
         load();
       },
-      onError: (err) => {
+      onError: (err: SessionStreamError) => {
         abortRef.current = null;
         const showErrorMessage = () => {
           setMessages(prev => {
             const msgs = [...prev];
             const last = { ...msgs[msgs.length - 1] };
-            last.content = `❌ ${err}`;
+            last.content = `❌ ${err.message}`;
             msgs[msgs.length - 1] = last;
             return msgs;
           });
         };
 
-        // 知识库无向量等预检错误 → 保留新聊天并写入错误消息
-        const isKbError = err.includes('没有向量') || err.includes('未找到索引') || err.includes('未绑定知识库');
+        const isKbError = err.category === 'kb';
         if (isKbError) {
           showErrorMessage();
           setLoading(false);
@@ -183,13 +197,13 @@ export default function SessionChat() {
           alert('⚠️ 知识库中还没有索引数据\n\n请先在知识库中上传并索引文件，然后再开始对话。');
           return;
         }
-        // 模型初始化错误 → 弹窗提示
-        const isModelError = err.includes('Ollama') || err.includes('模型') || err.includes('Embedding');
+
+        const isModelError = err.category === 'model' || err.code === 'MODEL_UNAVAILABLE';
         if (isModelError) {
           showErrorMessage();
           setLoading(false);
           load();
-          alert(`⚠️ 模型加载失败\n\n${err}`);
+          alert(`⚠️ 模型加载失败\n\n${err.message}`);
           return;
         }
         showErrorMessage();
@@ -214,8 +228,10 @@ export default function SessionChat() {
     setChats(updated.chats);
     if (activeChat === chatFile) {
       const remaining = updated.chats.filter(x => x.file !== chatFile);
-      setActiveChat(remaining.length > 0 ? remaining[0].file : null);
-      if (remaining.length === 0) setMessages([]);
+      const nextChat = remaining.length > 0 ? remaining[0].file : null;
+      setMessages([]);
+      setActiveChat(nextChat);
+      if (nextChat) sessionApi.selectChat(name, nextChat).catch(console.error);
     }
   };
 
@@ -232,7 +248,7 @@ export default function SessionChat() {
       <SessionSidebar
         name={name} sessionInfo={sessionInfo}
         chats={chats} activeChat={activeChat}
-        onSelectChat={setActiveChat}
+        onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
         onNewChat={handleNewChat}
         showBind={showBind} kbList={kbList}

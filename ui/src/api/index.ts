@@ -177,6 +177,12 @@ export interface SourceItem {
   score: number;
 }
 
+export interface SessionStreamError {
+  code: string;
+  category: string;
+  message: string;
+}
+
 export const sessionApi = {
   list: () => req<SessionItem[]>('/session'),
   create: (name: string) => req<{ name: string }>('/session', {
@@ -206,7 +212,7 @@ export const sessionApi = {
       onPhase?: (phase: string) => void;
       onSources?: (sources: SourceItem[]) => void;
       onDone?: (chat_file: string) => void;
-      onError?: (error: string) => void;
+      onError?: (error: SessionStreamError) => void;
     },
     chat_file?: string,
   ): Promise<void> => {
@@ -223,7 +229,7 @@ export const sessionApi = {
         const text = await res.text();
         const message = `HTTP ${res.status}: ${text}`;
         logApiError('POST', url, performance.now() - t0, message);
-        onError?.(message);
+        onError?.({ code: 'RUNTIME_ERROR', category: 'runtime', message });
         return;
       }
 
@@ -256,7 +262,13 @@ export const sessionApi = {
             else if (eventType === 'phase') onPhase?.(data.phase);
             else if (eventType === 'sources') onSources?.(data.sources);
             else if (eventType === 'done') onDone?.(data.chat_file);
-            else if (eventType === 'error') onError?.(data.message);
+            else if (eventType === 'error') {
+              onError?.({
+                code: data.code ?? 'RUNTIME_ERROR',
+                category: data.category ?? 'runtime',
+                message: data.message ?? 'Unknown error',
+              });
+            }
           } catch {
             // Ignore malformed SSE data blocks.
           }
@@ -268,7 +280,7 @@ export const sessionApi = {
       // AbortError 是主动中止导致的，不触发 onError
       if ((err as DOMException)?.name === 'AbortError') return;
       logApiError('POST', url, performance.now() - t0, err);
-      onError?.(String(err));
+      onError?.({ code: 'RUNTIME_ERROR', category: 'runtime', message: String(err) });
     });
   },
   deleteChat: (name: string, chatFile: string) =>

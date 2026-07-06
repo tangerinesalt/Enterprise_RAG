@@ -109,14 +109,14 @@ def chat(body: SessionChatRequest):
 
 
 @router.post("/chat/stream")
-async def chat_stream(body: SessionChatRequest):
+def chat_stream(body: SessionChatRequest):
     """聊天流式接口（SSE）。逐 token 推送 LLM 生成结果。"""
 
     def generate():
         for event in _session.chat_stream(body.name, body.query, body.chat_file):
             etype = event["type"]
             if etype == "error":
-                yield f"event: error\ndata: {json.dumps({'message': event['message']})}\n\n"
+                yield f"event: error\ndata: {json.dumps({'code': event['code'], 'category': event['category'], 'message': event['message']})}\n\n"
             elif etype == "start":
                 yield f"event: start\ndata: {json.dumps({'chat_file': event['chat_file']})}\n\n"
             elif etype == "token":

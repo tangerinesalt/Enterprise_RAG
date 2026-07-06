@@ -1,63 +1,60 @@
 """
-SessionManager — 会话管理核心类。
-
-每个会话在 `sessions/<name>/` 下自包含：
-    config.json      会话配置（kb_name, active_chat）
-    chats/           SimpleChatStore JSON 文件（每条对话独立）
+Session manager for session-scoped chats and retrieval config.
 """
 
-import os
 import json
+import os
 import shutil
+import tempfile
 import time
-from threading import Lock
 from datetime import datetime
 from pathlib import Path
+from threading import Lock, RLock
 
 import chromadb
-from llama_index.core import VectorStoreIndex
-from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.storage.chat_store import SimpleChatStore
+from llama_index.core import PromptTemplate, VectorStoreIndex
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.postprocessor import SentenceTransformerRerank
-from llama_index.core import PromptTemplate
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from config.init import init_models
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.retrieval import build_retriever
 from app.utils.logging import get_logger
+from config.init import init_models
 
-
-# ── 中文分词器（用于 BM25）─────────────────
-# 会话根目录
 SESSION_ROOT = str((Path(__file__).resolve().parent.parent.parent.parent / "sessions").resolve())
 
 logger = get_logger(__name__)
 _kb = KnowledgeBase()
 _models_initialized = False
 _models_lock = Lock()
-
-# ── 重排序模型缓存（避免每次查询重复加载）───
-_reranker_instance = None
+_session_config_locks: dict[str, RLock] = {}
+_session_config_locks_guard = Lock()
+_chat_file_locks: dict[tuple[str, str], RLock] = {}
+_chat_file_locks_guard = Lock()
+_reranker_instances: dict[int, SentenceTransformerRerank] = {}
 _reranker_lock = Lock()
 
 
 def _get_reranker(top_n: int = 5) -> SentenceTransformerRerank:
-    """全局缓存 SentenceTransformerRerank，避免每次查询重复加载模型。"""
-    global _reranker_instance
-    if _reranker_instance is not None:
-        _reranker_instance.top_n = top_n
-        return _reranker_instance
+    """Cache SentenceTransformerRerank per top_n value."""
+    reranker = _reranker_instances.get(top_n)
+    if reranker is not None:
+        return reranker
+
     with _reranker_lock:
-        if _reranker_instance is not None:
-            _reranker_instance.top_n = top_n
-            return _reranker_instance
-        _reranker_instance = SentenceTransformerRerank(
+        reranker = _reranker_instances.get(top_n)
+        if reranker is not None:
+            return reranker
+
+        reranker = SentenceTransformerRerank(
             model=r"C:\Users\tangerine\.rag_v\models\BAAI\bge-reranker-v2-m3",
             top_n=top_n,
         )
-        return _reranker_instance
+        _reranker_instances[top_n] = reranker
+        return reranker
 
 
 def _ensure_models_initialized() -> bool:
@@ -79,9 +76,6 @@ class SessionError(Exception):
 
 
 class SessionManager:
-    """会话管理"""
-
-    # 检索参数默认值
     DEFAULT_TOP_K = 8
     DEFAULT_TOP_N = 5
     DEFAULT_RETRIEVER_MODE = "hybrid"
@@ -90,7 +84,7 @@ class SessionManager:
         "1. 根据提供的上下文内容回答，不要编造不存在的条款。\n"
         "2. 如果上下文包含不同版本的内容，以最新版本为准。\n"
         "3. 回答需准确、简洁、有逻辑。分点说明时使用编号。\n"
-        "4. 如果上下文信息不足以回答，明确说明'根据提供的内容无法确定'，不要猜测。\n"
+        "4. 如果上下文信息不足以回答，明确说明：根据提供的内容无法确定，不要猜测。\n"
         "5. 回答基于原文，不要添加个人建议或主观评价。\n\n"
         "上下文内容：\n"
         "---------------------\n"
@@ -99,8 +93,14 @@ class SessionManager:
         "问题：{query_str}\n"
         "回答："
     )
-
-    # ── 路径 ─────────────────────────────────
+    CONTEXT_SUFFIX = (
+        "\n\n上下文内容：\n"
+        "---------------------\n"
+        "{context_str}\n"
+        "---------------------\n"
+        "问题：{query_str}\n"
+        "回答："
+    )
 
     def session_path(self, name: str) -> str:
         return os.path.join(SESSION_ROOT, name)
@@ -111,37 +111,62 @@ class SessionManager:
     def chats_dir(self, name: str) -> str:
         return os.path.join(self.session_path(name), "chats")
 
-    # ── 会话 CRUD ───────────────────────────
+    def _session_config_lock(self, name: str) -> RLock:
+        with _session_config_locks_guard:
+            lock = _session_config_locks.get(name)
+            if lock is None:
+                lock = RLock()
+                _session_config_locks[name] = lock
+            return lock
+
+    def _chat_file_lock(self, name: str, chat_file: str) -> RLock:
+        key = (name, chat_file)
+        with _chat_file_locks_guard:
+            lock = _chat_file_locks.get(key)
+            if lock is None:
+                lock = RLock()
+                _chat_file_locks[key] = lock
+            return lock
 
     def create(self, name: str) -> str:
-        path = self.session_path(name)
-        if os.path.exists(path):
-            raise SessionError(f"会话 '{name}' 已存在")
-        os.makedirs(self.chats_dir(name), exist_ok=True)
-        self._save_config(name, {
-            "kb_name": None,
-            "active_chat": None,
-            "top_k": self.DEFAULT_TOP_K,
-            "top_n": self.DEFAULT_TOP_N,
-            "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
-            "system_prompt": self.DEFAULT_SYSTEM_PROMPT,
-        })
-        return path
+        with self._session_config_lock(name):
+            path = self.session_path(name)
+            if os.path.exists(path):
+                raise SessionError(f"会话 '{name}' 已存在")
+            os.makedirs(self.chats_dir(name), exist_ok=True)
+            self._save_config(
+                name,
+                {
+                    "kb_name": None,
+                    "active_chat": None,
+                    "top_k": self.DEFAULT_TOP_K,
+                    "top_n": self.DEFAULT_TOP_N,
+                    "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
+                    "system_prompt": self.DEFAULT_SYSTEM_PROMPT,
+                    "chat_previews": {},
+                },
+            )
+            return path
 
     def delete(self, name: str, chat_file: str = None):
-        if chat_file:
-            # 删除单条聊天
-            chat_path = os.path.join(self.chats_dir(name), chat_file)
-            if not os.path.isfile(chat_path):
-                raise SessionError(f"聊天文件 '{chat_file}' 不存在")
-            os.remove(chat_path)
-            # 如果删掉的是当前 active_chat，清除
-            config = self._load_config(name)
-            if config.get("active_chat") == chat_file:
-                config["active_chat"] = None
+        with self._session_config_lock(name):
+            if chat_file:
+                self._ensure_exists(name)
+                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                if not os.path.isfile(chat_path):
+                    raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+                with self._chat_file_lock(name, chat_file):
+                    os.remove(chat_path)
+
+                config = self._load_config(name)
+                if config.get("active_chat") == chat_file:
+                    config["active_chat"] = None
+                previews = dict(config.get("chat_previews", {}))
+                previews.pop(chat_file, None)
+                config["chat_previews"] = previews
                 self._save_config(name, config)
-        else:
-            # 删除整个会话
+                return
+
             path = self.session_path(name)
             if not os.path.exists(path):
                 raise SessionError(f"会话 '{name}' 不存在")
@@ -154,19 +179,19 @@ class SessionManager:
         if not self.exists(name):
             raise SessionError(f"会话 '{name}' 不存在")
 
-    # ── 绑定知识库 ─────────────────────────
-
     def bind(self, name: str, kb_name: str):
-        self._ensure_exists(name)
-        if not _kb.exists(kb_name):
-            raise SessionError(f"知识库 '{kb_name}' 不存在")
-        config = self._load_config(name)
-        config["kb_name"] = kb_name
-        self._save_config(name, config)
+        with self._session_config_lock(name):
+            self._ensure_exists(name)
+            if not _kb.exists(kb_name):
+                raise SessionError(f"知识库 '{kb_name}' 不存在")
+            config = self._load_config(name)
+            config["kb_name"] = kb_name
+            self._save_config(name, config)
 
     def info(self, name: str) -> dict:
         self._ensure_exists(name)
-        config = self._load_config(name)
+        with self._session_config_lock(name):
+            config = self._load_config(name)
         chats = self.list_chats(name)
         return {
             "name": name,
@@ -179,99 +204,88 @@ class SessionManager:
             "chat_files": chats,
         }
 
-    # ── 列表 ───────────────────────────────
-
     def list_all(self) -> list[dict]:
         if not os.path.isdir(SESSION_ROOT):
             return []
+
         result = []
-        for d in sorted(os.listdir(SESSION_ROOT)):
-            path = os.path.join(SESSION_ROOT, d)
-            if os.path.isdir(path):
-                config = self._load_config(d)
-                # 直接数 .json 文件数，避免打开每个聊天文件反序列化
-                cdir = self.chats_dir(d)
-                total_chats = len([
-                    f for f in os.listdir(cdir)
-                    if f.endswith(".json")
-                ]) if os.path.isdir(cdir) else 0
-                result.append({
-                    "name": d,
+        for entry in sorted(os.listdir(SESSION_ROOT)):
+            path = os.path.join(SESSION_ROOT, entry)
+            if not os.path.isdir(path):
+                continue
+            config = self._load_config(entry)
+            cdir = self.chats_dir(entry)
+            total_chats = len([f for f in os.listdir(cdir) if f.endswith(".json")]) if os.path.isdir(cdir) else 0
+            result.append(
+                {
+                    "name": entry,
                     "kb_name": config.get("kb_name"),
                     "active_chat": config.get("active_chat"),
                     "total_chats": total_chats,
-                })
+                }
+            )
         return result
 
     def list_chats(self, name: str) -> list[dict]:
-        """列出会话的聊天文件（含 query 预览），不读取文件内容。"""
         self._ensure_exists(name)
         cdir = self.chats_dir(name)
         if not os.path.isdir(cdir):
             return []
-        config = self._load_config(name)
-        active = config.get("active_chat")
-        previews = config.get("chat_previews", {})
+
+        with self._session_config_lock(name):
+            config = self._load_config(name)
+            active = config.get("active_chat")
+            previews = dict(config.get("chat_previews", {}))
+
         result = []
-        for f in sorted(os.listdir(cdir)):
-            if f.endswith(".json"):
-                result.append({
-                    "file": f,
-                    "is_active": f == active,
-                    "preview": previews.get(f),
-                })
+        for filename in sorted(os.listdir(cdir)):
+            if filename.endswith(".json"):
+                result.append(
+                    {
+                        "file": filename,
+                        "is_active": filename == active,
+                        "preview": previews.get(filename),
+                    }
+                )
         return result
 
-    # ── 聊天管理 ───────────────────────────
-
     def new_chat(self, name: str) -> str:
-        """新建聊天文件（设为 active_chat）。返回文件名。"""
-        self._ensure_exists(name)
-        filename = self._gen_chat_filename(name)
-        # 创建空的 SimpleChatStore 并持久化
-        store = SimpleChatStore()
-        store.persist(os.path.join(self.chats_dir(name), filename))
-        # 设为当前
-        config = self._load_config(name)
-        config["active_chat"] = filename
-        self._save_config(name, config)
-        return filename
+        with self._session_config_lock(name):
+            self._ensure_exists(name)
+            config = self._load_config(name)
+            return self._create_chat_file_locked(name, config)
 
     def select_chat(self, name: str, chat_file: str):
-        """切换到指定的历史聊天文件。"""
-        self._ensure_exists(name)
-        chat_path = os.path.join(self.chats_dir(name), chat_file)
-        if not os.path.isfile(chat_path):
-            raise SessionError(f"聊天文件 '{chat_file}' 不存在")
-        config = self._load_config(name)
-        config["active_chat"] = chat_file
-        self._save_config(name, config)
-
-    # ── 获取聊天记录 ───────────────────────
+        with self._session_config_lock(name):
+            self._ensure_exists(name)
+            chat_path = os.path.join(self.chats_dir(name), chat_file)
+            if not os.path.isfile(chat_path):
+                raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+            config = self._load_config(name)
+            config["active_chat"] = chat_file
+            self._save_config(name, config)
 
     def get_messages(self, name: str, chat_file: str) -> list[dict]:
-        """获取指定聊天文件的全部消息记录。"""
         self._ensure_exists(name)
         chat_path = os.path.join(self.chats_dir(name), chat_file)
         if not os.path.isfile(chat_path):
             raise SessionError(f"聊天文件 '{chat_file}' 不存在")
 
-        store = SimpleChatStore.from_persist_path(chat_path)
-        keys = store.get_keys()
-        if not keys:
-            return []
+        with self._chat_file_lock(name, chat_file):
+            store = SimpleChatStore.from_persist_path(chat_path)
+            keys = store.get_keys()
+            if not keys:
+                return []
 
-        messages = store.get_messages(keys[0])
-        return [
-            {
-                "role": m.role.value if hasattr(m.role, 'value') else str(m.role),
-                "content": m.content,
-                "additional_kwargs": m.additional_kwargs,
-            }
-            for m in messages
-        ]
-
-    # ── 流式聊天核心 ───────────────────────
+            messages = store.get_messages(keys[0])
+            return [
+                {
+                    "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+                    "content": m.content,
+                    "additional_kwargs": m.additional_kwargs,
+                }
+                for m in messages
+            ]
 
     def chat_stream(self, name: str, query: str, chat_file: str = None):
         """
@@ -284,313 +298,342 @@ class SessionManager:
             {"type": "done",    "chat_file": "..."}
             {"type": "error",   "message": "..."}
         """
-        chat_path = None
-        store = None
-        _t0 = time.monotonic()
+        started_at = time.monotonic()
+        chat_file = self._ensure_chat_target(name, query, chat_file)
+        with self._chat_file_lock(name, chat_file):
+            chat_path = None
+            store = None
+            try:
+                config, chat_file, chat_path, store = self._prepare_chat_turn(name, query, chat_file)
 
-        def persist_error_message(message: str):
-            if store is None or chat_path is None:
-                return
-            store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=f"❌ {message}"))
-            store.persist(chat_path)
+                yield {"type": "start", "chat_file": chat_file}
 
-        try:
+                kb_name = config.get("kb_name")
+                if not kb_name:
+                    raise SessionError(f"会话 '{name}' 未绑定知识库")
+                if not _kb.exists(kb_name):
+                    raise SessionError(f"知识库 '{kb_name}' 不存在")
+
+                db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
+                try:
+                    chroma_collection = db.get_collection("kb_index")
+                except Exception:
+                    raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据，请先在知识库中索引文件")
+
+                if chroma_collection.count() == 0:
+                    raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
+
+                _ensure_models_initialized()
+
+                vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+                index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+                top_k = config.get("top_k", self.DEFAULT_TOP_K)
+                top_n = config.get("top_n", self.DEFAULT_TOP_N)
+                retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
+
+                logger.debug(
+                    "query | stream start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
+                    name,
+                    kb_name,
+                    top_k,
+                    top_n,
+                    retriever_mode,
+                    chat_file,
+                    query,
+                )
+
+                reranker = _get_reranker(top_n=top_n)
+                retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
+                system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
+                query_engine = RetrieverQueryEngine.from_args(
+                    retriever=retriever,
+                    node_postprocessors=[reranker],
+                    text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
+                    streaming=True,
+                )
+                response = query_engine.query(query)
+
+                answer_buf = []
+                for chunk in response.response_gen:
+                    if chunk:
+                        answer_buf.append(chunk)
+                        yield {"type": "token", "token": chunk}
+
+                answer = "".join(answer_buf)
+                sources = self._extract_sources(response)
+
+                store.add_message(
+                    name,
+                    ChatMessage(
+                        role=MessageRole.ASSISTANT,
+                        content=answer,
+                        additional_kwargs={"sources": sources} if sources else None,
+                    ),
+                )
+                store.persist(chat_path)
+
+                elapsed = time.monotonic() - started_at
+                ans_preview = answer[:100].replace("\n", " ")
+                source_scores = [s["score"] for s in sources if s["score"] is not None]
+                score_summary = ""
+                if source_scores:
+                    score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
+                logger.debug(
+                    "query | stream done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
+                    name,
+                    len(sources),
+                    elapsed,
+                    len(answer),
+                    score_summary,
+                    chat_file,
+                    ans_preview,
+                )
+
+                yield {"type": "sources", "sources": sources}
+                yield {"type": "done", "chat_file": chat_file}
+            except Exception as exc:
+                elapsed = time.monotonic() - started_at
+                error = self._build_stream_error(exc)
+                log_fn = logger.debug if isinstance(exc, SessionError) else logger.error
+                log_fn("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, error["message"])
+                if store is not None and chat_path is not None:
+                    self._append_assistant_error(store, name, chat_path, error["message"])
+                yield {"type": "error", **error}
+
+    def chat(self, name: str, query: str, chat_file: str = None) -> dict:
+        started_at = time.monotonic()
+        chat_file = self._ensure_chat_target(name, query, chat_file)
+        with self._chat_file_lock(name, chat_file):
+            chat_path = None
+            store = None
+            try:
+                config, chat_file, chat_path, store = self._prepare_chat_turn(name, query, chat_file)
+
+                kb_name = config.get("kb_name")
+                if not kb_name:
+                    raise SessionError(f"会话 '{name}' 未绑定知识库")
+                if not _kb.exists(kb_name):
+                    raise SessionError(f"知识库 '{kb_name}' 不存在")
+
+                _ensure_models_initialized()
+
+                db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
+                try:
+                    chroma_collection = db.get_collection("kb_index")
+                except Exception:
+                    raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据")
+
+                if chroma_collection.count() == 0:
+                    raise SessionError(f"知识库 '{kb_name}' 中没有向量数据")
+
+                vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+                index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+                top_k = config.get("top_k", self.DEFAULT_TOP_K)
+                top_n = config.get("top_n", self.DEFAULT_TOP_N)
+                retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
+
+                logger.debug(
+                    "query | sync start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
+                    name,
+                    kb_name,
+                    top_k,
+                    top_n,
+                    retriever_mode,
+                    chat_file,
+                    query,
+                )
+
+                retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
+                reranker = _get_reranker(top_n=top_n)
+                system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
+                query_engine = RetrieverQueryEngine.from_args(
+                    retriever=retriever,
+                    node_postprocessors=[reranker],
+                    text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
+                )
+                response = query_engine.query(query)
+
+                answer = str(response)
+                sources = self._extract_sources(response)
+
+                answer_with_sources = answer
+                if sources:
+                    answer_with_sources += "\n\n---\n来源:\n"
+                    for index_number, source in enumerate(sources, start=1):
+                        answer_with_sources += f"\n[{index_number}] (相关度 {source['score']}) {source['text']}"
+
+                store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=answer_with_sources))
+                store.persist(chat_path)
+
+                elapsed = time.monotonic() - started_at
+                ans_preview = answer[:100].replace("\n", " ")
+                source_scores = [s["score"] for s in sources if s["score"] is not None]
+                score_summary = ""
+                if source_scores:
+                    score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
+                logger.debug(
+                    "query | sync done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
+                    name,
+                    len(sources),
+                    elapsed,
+                    len(answer),
+                    score_summary,
+                    chat_file,
+                    ans_preview,
+                )
+
+                return {
+                    "query": query,
+                    "answer": answer,
+                    "sources": sources,
+                    "chat_file": chat_file,
+                    "chat_path": chat_path,
+                }
+            except Exception as exc:
+                error = self._build_stream_error(exc)
+                if store is not None and chat_path is not None:
+                    self._append_assistant_error(store, name, chat_path, error["message"])
+                raise
+
+    def get_config(self, name: str) -> dict:
+        with self._session_config_lock(name):
+            self._ensure_exists(name)
+            return self._load_config(name)
+
+    def update_config(self, name: str, **kwargs) -> dict:
+        with self._session_config_lock(name):
+            self._ensure_exists(name)
+            cfg = self._load_config(name)
+
+            for key, value in kwargs.items():
+                if key in ("top_k", "top_n"):
+                    if not isinstance(value, int) or value < 1:
+                        raise SessionError(f"{key} MUST be >= 1, got {value}")
+                    cfg[key] = value
+                elif key == "retriever_mode":
+                    if value not in ("hybrid", "vector-only"):
+                        raise SessionError(f"retriever_mode MUST be 'hybrid' or 'vector-only', got '{value}'")
+                    cfg[key] = value
+                elif key == "system_prompt":
+                    if not isinstance(value, str):
+                        raise SessionError("system_prompt MUST be a string")
+                    cfg[key] = value
+                else:
+                    raise SessionError(f"不支持的配置项: {key}")
+
+            self._save_config(name, cfg)
+            return cfg
+
+    def _append_assistant_error(self, store: SimpleChatStore, name: str, chat_path: str, message: str):
+        store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=f"❌ {message}"))
+        store.persist(chat_path)
+
+    def _resolve_chat_target(self, name: str, chat_file: str = None) -> tuple[dict, str, str]:
+        self._ensure_exists(name)
+        config = self._load_config(name)
+        if chat_file:
+            chat_path = os.path.join(self.chats_dir(name), chat_file)
+            if not os.path.isfile(chat_path):
+                raise SessionError(f"聊天文件 '{chat_file}' 不存在")
+            return config, chat_file, chat_path
+
+        chat_file = self._ensure_chat_target(name, "", None)
+        config = self._load_config(name)
+        chat_path = os.path.join(self.chats_dir(name), chat_file)
+        return config, chat_file, chat_path
+
+    def _prepare_chat_turn(self, name: str, query: str, chat_file: str = None) -> tuple[dict, str, str, SimpleChatStore]:
+        config, chat_file, chat_path = self._resolve_chat_target(name, chat_file)
+        store = SimpleChatStore.from_persist_path(chat_path)
+        store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
+        store.persist(chat_path)
+        return config, chat_file, chat_path, store
+
+    def _ensure_chat_target(self, name: str, query: str, chat_file: str = None) -> str:
+        with self._session_config_lock(name):
             self._ensure_exists(name)
             config = self._load_config(name)
-
             if chat_file:
                 chat_path = os.path.join(self.chats_dir(name), chat_file)
                 if not os.path.isfile(chat_path):
                     raise SessionError(f"聊天文件 '{chat_file}' 不存在")
             else:
-                chat_file = self.new_chat(name)
-                config = self._load_config(name)
-                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                chat_file = self._create_chat_file_locked(name, config)
 
-            yield {"type": "start", "chat_file": chat_file}
+            self._ensure_chat_preview_locked(name, config, chat_file, query)
+            return chat_file
 
-            store = SimpleChatStore.from_persist_path(chat_path)
-            store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
-            store.persist(chat_path)
+    def _create_chat_file_locked(self, name: str, config: dict) -> str:
+        filename = self._gen_chat_filename(name)
+        store = SimpleChatStore()
+        store.persist(os.path.join(self.chats_dir(name), filename))
+        config["active_chat"] = filename
+        self._save_config(name, config)
+        return filename
 
-            if query:
-                _cfg = self._load_config(name)
-                _previews = _cfg.get("chat_previews", {})
-                if chat_file not in _previews:
-                    _preview = query[:15].replace("\n", " ")
-                    _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
-                    _cfg["chat_previews"] = _previews
-                    self._save_config(name, _cfg)
+    def _ensure_chat_preview_locked(self, name: str, config: dict, chat_file: str, query: str):
+        if not query:
+            return
+        previews = dict(config.get("chat_previews", {}))
+        if chat_file in previews:
+            return
+        preview = query[:15].replace("\n", " ")
+        previews[chat_file] = preview + ("..." if len(query) > 15 else "")
+        config["chat_previews"] = previews
+        self._save_config(name, config)
 
-            kb_name = config.get("kb_name")
-            if not kb_name:
-                raise SessionError(f"会话 '{name}' 未绑定知识库")
-            if not _kb.exists(kb_name):
-                raise SessionError(f"知识库 '{kb_name}' 不存在")
+    def _normalize_system_prompt(self, system_prompt: str) -> str:
+        if not system_prompt:
+            return ""
+        if "{context_str}" in system_prompt:
+            return system_prompt
+        return system_prompt + self.CONTEXT_SUFFIX
 
-            db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
-            try:
-                chroma_collection = db.get_collection("kb_index")
-            except Exception:
-                raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据，请先在知识库中索引文件")
-
-            if chroma_collection.count() == 0:
-                raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
-
-            _ensure_models_initialized()
-
-            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-            index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
-
-            vector_count = chroma_collection.count()
-            if vector_count == 0:
-                raise SessionError(f"知识库 '{kb_name}' 中没有向量数据")
-
-            top_k = config.get("top_k", self.DEFAULT_TOP_K)
-            top_n = config.get("top_n", self.DEFAULT_TOP_N)
-            retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
-
-            logger.debug("query | stream start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
-                         name, kb_name, top_k, top_n, retriever_mode, chat_file, query)
-
-            reranker = _get_reranker(top_n=top_n)
-            retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-            sp = config.get("system_prompt", "")
-            if sp and "{context_str}" not in sp:
-                sp += "\n\n\u4e0a\u4e0b\u6587\u5185\u5bb9\uff1a\n---------------------\n{context_str}\n---------------------\n\u95ee\u9898\uff1a{query_str}\n\u56de\u7b54\uff1a"
-            query_engine = RetrieverQueryEngine.from_args(
-                retriever=retriever, node_postprocessors=[reranker],
-                text_qa_template=PromptTemplate(sp) if sp else None,
-                streaming=True,
-            )
-            response = query_engine.query(query)
-
-            answer_buf = []
-            for chunk in response.response_gen:
-                if chunk:
-                    answer_buf.append(chunk)
-                    yield {"type": "token", "token": chunk}
-
-            answer = "".join(answer_buf)
-
-            sources = []
-            if hasattr(response, "source_nodes") and response.source_nodes:
-                for node in response.source_nodes:
-                    score = node.score if hasattr(node, "score") else None
-                    sources.append({
-                        "text": node.text.strip(),
-                        "score": round(float(score), 4) if score is not None else None,
-                    })
-
-            store.add_message(
-                name,
-                ChatMessage(
-                    role=MessageRole.ASSISTANT,
-                    content=answer,
-                    additional_kwargs={"sources": sources} if sources else None,
-                ),
-            )
-            store.persist(chat_path)
-
-            elapsed = time.monotonic() - _t0
-            ans_preview = answer[:100].replace("\n", " ")
-            source_scores = [s["score"] for s in sources if s["score"] is not None]
-            score_summary = ""
-            if source_scores:
-                score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
-            logger.debug(
-                "query | stream done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
-                name, len(sources), elapsed, len(answer), score_summary, chat_file, ans_preview,
-            )
-
-            yield {"type": "sources", "sources": sources}
-            yield {"type": "done", "chat_file": chat_file}
-
-        except SessionError as e:
-            elapsed = time.monotonic() - _t0
-            logger.debug("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
-            persist_error_message(str(e))
-            yield {"type": "error", "message": str(e)}
-        except (ConnectionError, TimeoutError, ValueError) as e:
-            elapsed = time.monotonic() - _t0
-            logger.error("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
-            persist_error_message(str(e))
-            yield {"type": "error", "message": str(e)}
-        except Exception as e:
-            elapsed = time.monotonic() - _t0
-            logger.error("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, str(e))
-            message = f"内部错误: {e}"
-            persist_error_message(message)
-            yield {"type": "error", "message": message}
-
-    def chat(self, name: str, query: str, chat_file: str = None) -> dict:
-        """
-        聊天：检索绑定 KB → LLM 生成 → 持久化 → print。
-
-        如果 chat_file 指定 → 继续该聊天
-        如果 chat_file 未指定 → 自动新建聊天
-        """
-        _t0 = time.monotonic()
-        self._ensure_exists(name)
-        config = self._load_config(name)
-
-        # 确定聊天文件
-        if chat_file:
-            # 使用指定的聊天
-            chat_path = os.path.join(self.chats_dir(name), chat_file)
-            if not os.path.isfile(chat_path):
-                raise SessionError(f"聊天文件 '{chat_file}' 不存在")
-        else:
-            # 自动新建
-            chat_file = self.new_chat(name)
-            config = self._load_config(name)  # reload
-            chat_path = os.path.join(self.chats_dir(name), chat_file)
-
-        # 检查绑定的知识库
-        kb_name = config.get("kb_name")
-        if not kb_name:
-            raise SessionError(f"会话 '{name}' 未绑定知识库")
-        if not _kb.exists(kb_name):
-            raise SessionError(f"知识库 '{kb_name}' 不存在")
-
-        # 阶段 1：加载历史 + 初始化模型
-        store = SimpleChatStore.from_persist_path(chat_path)
-        _ensure_models_initialized()
-
-        # 加载 ChromaDB
-        db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
-        try:
-            chroma_collection = db.get_collection("kb_index")
-        except Exception:
-            raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据")
-
-        vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-        index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
-
-        vector_count = chroma_collection.count()
-        if vector_count == 0:
-            raise SessionError(f"知识库 '{kb_name}' 中没有向量数据")
-
-        # 追加用户消息
-        store.add_message(name, ChatMessage(role=MessageRole.USER, content=query))
-
-        # 阶段 2：检索 + 生成
-        top_k = config.get("top_k", self.DEFAULT_TOP_K)
-        top_n = config.get("top_n", self.DEFAULT_TOP_N)
-        retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
-        logger.debug("query | sync start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
-                     name, kb_name, top_k, top_n, retriever_mode, chat_file, query)
-        retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-        reranker = _get_reranker(top_n=top_n)
-        sp = config.get("system_prompt", "")
-        if sp and "{context_str}" not in sp:
-            sp += "\n\n上下文内容：\n---------------------\n{context_str}\n---------------------\n问题：{query_str}\n回答："
-        query_engine = RetrieverQueryEngine.from_args(
-            retriever=retriever, node_postprocessors=[reranker],
-            text_qa_template=PromptTemplate(sp) if sp else None,
-        )
-        response = query_engine.query(query)
-
-        # 提取来源
+    def _extract_sources(self, response) -> list[dict]:
         sources = []
         if hasattr(response, "source_nodes") and response.source_nodes:
             for node in response.source_nodes:
                 score = node.score if hasattr(node, "score") else None
-                sources.append({
-                    "text": node.text.strip(),
-                    "score": round(float(score), 4) if score is not None else None,
-                })
+                sources.append(
+                    {
+                        "text": node.text.strip(),
+                        "score": round(float(score), 4) if score is not None else None,
+                    }
+                )
+        return sources
 
-        answer = str(response)
-
-        # 构造带来源的助手消息
-        answer_with_sources = answer
-        if sources:
-            answer_with_sources += "\n\n---\n来源:\n"
-            for i, s in enumerate(sources):
-                answer_with_sources += f"\n[{i+1}] (相关度: {s['score']}) {s['text']}"
-
-        store.add_message(
-            name,
-            ChatMessage(role=MessageRole.ASSISTANT, content=answer_with_sources),
-        )
-
-        # 阶段 3：持久化
-        store.persist(chat_path)
-
-        # 首次写入后保存 query 预览到会话配置
-        if query:
-            _cfg = self._load_config(name)
-            _previews = _cfg.get("chat_previews", {})
-            if chat_file not in _previews:
-                _preview = query[:15].replace("\n", " ")
-                _previews[chat_file] = _preview + ("..." if len(query) > 15 else "")
-                _cfg["chat_previews"] = _previews
-                self._save_config(name, _cfg)
-
-        elapsed = time.monotonic() - _t0
-        ans_preview = answer[:100].replace("\n", " ")
-        source_scores = [s["score"] for s in sources if s["score"] is not None]
-        score_summary = ""
-        if source_scores:
-            score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
-        logger.debug(
-            "query | sync done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
-            name, len(sources), elapsed, len(answer), score_summary, chat_file, ans_preview,
-        )
-
-        return {
-            "query": query,
-            "answer": answer,
-            "sources": sources,
-            "chat_file": chat_file,
-            "chat_path": chat_path,
-        }
-
-    # ── 检索参数管理 ─────────────────────────
-
-    def get_config(self, name: str) -> dict:
-        """获取会话完整配置（含 top_k / top_n）。"""
-        self._ensure_exists(name)
-        return self._load_config(name)
-
-    def update_config(self, name: str, **kwargs) -> dict:
-        """更新会话配置参数。校验通过后持久化，返回完整配置。"""
-        self._ensure_exists(name)
-        cfg = self._load_config(name)
-
-        for key, value in kwargs.items():
-            if key in ("top_k", "top_n"):
-                if not isinstance(value, int) or value < 1:
-                    raise SessionError(f"{key} MUST be >= 1, got {value}")
-                cfg[key] = value
-            elif key == "retriever_mode":
-                if value not in ("hybrid", "vector-only"):
-                    raise SessionError(
-                        f"retriever_mode MUST be 'hybrid' or 'vector-only', got '{value}'")
-                cfg[key] = value
-            elif key == "system_prompt":
-                if not isinstance(value, str):
-                    raise SessionError(f"system_prompt MUST be a string")
-                cfg[key] = value
-            else:
-                raise SessionError(f"不支持的配置项: {key}")
-
-        self._save_config(name, cfg)
-        return cfg
-
-    # ── 内部方法 ───────────────────────────
+    def _build_stream_error(self, exc: Exception) -> dict:
+        message = str(exc)
+        if isinstance(exc, SessionError):
+            if "未绑定知识库" in message:
+                return {"code": "KB_NOT_BOUND", "category": "kb", "message": message}
+            if "知识库" in message and "不存在" in message:
+                return {"code": "KB_NOT_FOUND", "category": "kb", "message": message}
+            if "未找到索引数据" in message:
+                return {"code": "KB_INDEX_MISSING", "category": "kb", "message": message}
+            if "没有向量数据" in message:
+                return {"code": "KB_VECTOR_EMPTY", "category": "kb", "message": message}
+            return {"code": "RUNTIME_ERROR", "category": "runtime", "message": message}
+        if isinstance(exc, (ConnectionError, TimeoutError, ValueError)):
+            return {"code": "MODEL_UNAVAILABLE", "category": "model", "message": message}
+        return {"code": "RUNTIME_ERROR", "category": "runtime", "message": f"内部错误: {exc}"}
 
     def _load_config(self, name: str) -> dict:
         path = self.config_path(name)
         if not os.path.isfile(path):
-            return {"kb_name": None, "active_chat": None,
-                    "top_k": self.DEFAULT_TOP_K, "top_n": self.DEFAULT_TOP_N,
-                    "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
-                    "system_prompt": self.DEFAULT_SYSTEM_PROMPT}
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        # 兼容旧 config：缺失字段用默认值补全
+            return {
+                "kb_name": None,
+                "active_chat": None,
+                "top_k": self.DEFAULT_TOP_K,
+                "top_n": self.DEFAULT_TOP_N,
+                "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
+                "system_prompt": self.DEFAULT_SYSTEM_PROMPT,
+                "chat_previews": {},
+            }
+
+        with open(path, "r", encoding="utf-8") as handle:
+            cfg = json.load(handle)
+
         if "top_k" not in cfg:
             cfg["top_k"] = self.DEFAULT_TOP_K
         if "top_n" not in cfg:
@@ -604,12 +647,25 @@ class SessionManager:
         return cfg
 
     def _save_config(self, name: str, data: dict):
-        os.makedirs(os.path.dirname(self.config_path(name)), exist_ok=True)
-        with open(self.config_path(name), "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        self._save_config_file(self.config_path(name), data)
+
+    def _save_config_file(self, config_path: str, data: dict):
+        config_dir = os.path.dirname(config_path)
+        os.makedirs(config_dir, exist_ok=True)
+
+        fd, temp_path = tempfile.mkstemp(prefix="config.", suffix=".tmp", dir=config_dir)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, config_path)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
 
     def _gen_chat_filename(self, name: str) -> str:
-        """按时间生成文件名，处理冲突。"""
         base = datetime.now().strftime("%Y_%m_%d_%H_%M")
         cdir = self.chats_dir(name)
         os.makedirs(cdir, exist_ok=True)
@@ -618,18 +674,17 @@ class SessionManager:
         if not os.path.isfile(os.path.join(cdir, filename)):
             return filename
 
-        # 有冲突，加 _1, _2 ...
-        i = 1
+        index = 1
         while True:
-            filename = f"{base}_{i}.json"
+            filename = f"{base}_{index}.json"
             if not os.path.isfile(os.path.join(cdir, filename)):
                 return filename
-            i += 1
+            index += 1
 
     def _count_chat_messages(self, fpath: str) -> int:
         try:
             store = SimpleChatStore.from_persist_path(fpath)
             keys = store.get_keys()
-            return sum(len(store.get_messages(k)) for k in keys)
+            return sum(len(store.get_messages(key)) for key in keys)
         except Exception:
             return 0

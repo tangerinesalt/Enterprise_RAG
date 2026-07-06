@@ -1,24 +1,27 @@
-## ADDED Requirements
+## Purpose
 
+Define requirements for session chat persistence, retrieval, and answer generation, covering both CLI and streaming interfaces.
+## Requirements
 ### Requirement: System SHALL persist chat history via SimpleChatStore
 
-The system SHALL use LlamaIndex's `SimpleChatStore` to manage chat messages, persisting to JSON files.
+The system SHALL persist each conversation to a specific chat file via `SimpleChatStore`. When a request provides `chat_file`, the system SHALL load and append to that exact file instead of inferring the target from a session-global current chat.
 
 #### Scenario: Chat file creates per session
-- **WHEN** user runs `session chat my-session "question"` for the first time
-- **THEN** a chat file is created at `sessions/my-session/chats/<timestamp>.json`
-- **THEN** the file name follows the format `年_月_日_时_分.json`
+- **WHEN** user runs `session chat my-session "question"` for the first time without specifying `chat_file`
+- **THEN** a new chat file is created at `sessions/my-session/chats/<timestamp>.json`
 - **THEN** the file contains the user message and assistant response
 
-#### Scenario: Chat file naming with conflict
-- **WHEN** two chat sessions start in the same minute
-- **THEN** the second file gets suffix `_1`, third gets `_2`, etc.
+#### Scenario: Chat continues on explicit chat file
+- **WHEN** client sends `POST /api/session/chat` with `{"name": "my-session", "query": "follow-up", "chat_file": "2026_07_06_10_00.json"}`
+- **THEN** the existing `SimpleChatStore` is loaded from `2026_07_06_10_00.json`
+- **THEN** the new messages are appended to that same file
+- **THEN** the assistant response uses that file's prior conversation context
 
-#### Scenario: Multi-turn conversation
-- **WHEN** user runs `session chat my-session "follow-up"` on an existing chat file
-- **THEN** the existing SimpleChatStore is loaded from the most recent chat file
-- **THEN** the new messages are appended to the same file
-- **THEN** the assistant's response considers previous conversation context
+#### Scenario: Explicit chat file ignores unrelated active chat metadata
+- **WHEN** session metadata `active_chat` is `chat-b.json`
+- **AND** client sends a request with `chat_file: "chat-a.json"`
+- **THEN** the system appends the conversation to `chat-a.json`
+- **THEN** it does NOT switch to `chat-b.json` because of session-global metadata
 
 ### Requirement: System SHALL retrieve and generate answers
 
@@ -45,8 +48,6 @@ The frontend SHALL NOT automatically select or load any chat file when the user 
 - **THEN** the session info and chat list are loaded from the server
 - **THEN** no chat file content is fetched
 - **THEN** no chat file is shown in the main content area
-
-## MODIFIED Requirements
 
 ### Requirement: System SHALL retrieve with session-level top_k
 
@@ -95,9 +96,3 @@ The session config SHALL support `retriever_mode` field: `"hybrid"` (default) or
 - **THEN** only VectorIndexRetriever (with threshold filter) is used
 - **THEN** the reranker is applied directly on vector results
 
-## REMOVED Requirements
-
-### Requirement: System SHALL retrieve and generate answers (hardcoded top-5)
-
-**Reason**: Replaced by session-level configurable top_k/top_n
-**Migration**: The session config now controls retrieval depth; use `session config <name> --set top_k=N` to adjust
