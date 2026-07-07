@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useEffectEvent, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { kbApi } from '../api';
 import type { FileItem } from '../api';
@@ -19,10 +19,10 @@ export default function KbDetail() {
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
 
-  const load = () => {
+  const load = useEffectEvent(() => {
     if (!name) return;
     kbApi.get(name).then(d => setFiles(d.files)).catch(console.error);
-  };
+  });
 
   useEffect(() => { load(); }, [name]);
 

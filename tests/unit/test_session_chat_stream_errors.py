@@ -163,3 +163,17 @@ def test_same_session_concurrent_writes_preserve_active_chat_and_config(tmp_path
     assert config["active_chat"] == chat_file
     assert json.loads(Path(manager.config_path("demo")).read_text(encoding="utf-8"))["active_chat"] == chat_file
     assert json.loads(Path(manager.chats_dir("demo"), chat_file).read_text(encoding="utf-8"))
+
+
+def test_create_sets_default_system_prompt_with_parameter_and_context_guidance(tmp_path, monkeypatch):
+    manager = _make_manager(tmp_path, monkeypatch)
+    manager.create("demo")
+
+    prompt = manager.get_config("demo")["system_prompt"]
+
+    assert "来源超过 8 条" not in prompt
+    assert "0.55" not in prompt
+    assert "0.65" not in prompt
+    assert "不同情形下会导致结果不同" in prompt
+    assert "{context_str}" in prompt
+    assert "{query_str}" in prompt

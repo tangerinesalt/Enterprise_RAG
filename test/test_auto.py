@@ -11,10 +11,13 @@ test_auto.py — 全自动端到端测试。
 """
 
 import os
-import sys
 import shutil
 import subprocess
+import sys
 import tempfile
+
+# 告诉 pytest 这是手动脚本，不要按测试模块收集。
+__test__ = False
 
 # 确保项目根目录在 Python 路径中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,7 +63,7 @@ def cli(*args: str) -> tuple[int, str]:
     return run([sys.executable, "-m", "app.modules.kb_manager.cli"] + list(args))
 
 
-def test_query(kb_name: str, question: str) -> tuple[int, str]:
+def run_query(kb_name: str, question: str) -> tuple[int, str]:
     """运行检索测试"""
     return run([sys.executable, "test/test_retrieve.py", kb_name, question])
 
@@ -128,7 +131,7 @@ def run_test() -> bool:
     print(f"{'='*50}")
     all_pass = True
     for question, keywords in EXPECTED_KEYWORDS.items():
-        code, answer = test_query(KB_NAME, question)
+        code, answer = run_query(KB_NAME, question)
         if code != 0:
             print(f"  [FAIL] 查询失败 ({question}): {answer[:100]}")
             all_pass = False
@@ -147,7 +150,7 @@ def run_test() -> bool:
             results.append((question, True, []))
 
     if not all_pass:
-        print(f"\n  [WARN] 部分查询未通过验证（可能是 LLM 表达差异，建议人工确认）")
+        print("\n  [WARN] 部分查询未通过验证（可能是 LLM 表达差异，建议人工确认）")
 
     # 5. 清理知识库（删除文件夹）
     print(f"\n{'='*50}")
@@ -173,7 +176,7 @@ def cleanup():
 
 def main():
     print(f"{'='*50}")
-    print(f"RAG V — 自动测试脚本")
+    print("RAG V — 自动测试脚本")
     print(f"{'='*50}")
     print(f"测试知识库: {KB_NAME}")
     print(f"测试目录:   {TEST_DIR}")

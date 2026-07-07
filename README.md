@@ -315,6 +315,20 @@ python -m app.cli session delete demo_session
 python -m app.cli kb delete demo_kb
 ```
 
+### 手动端到端脚本
+
+`test/test_auto.py` 是手动运行的全链路功能脚本，用于创建临时知识库、上传测试文件、索引并执行查询验证：
+
+```powershell
+python test/test_auto.py
+```
+
+该脚本不会参与 `pytest` 自动收集；日常回归请使用：
+
+```powershell
+pytest -q
+```
+
 ## 常用目录
 
 - `app/api/`：FastAPI 路由和服务入口。

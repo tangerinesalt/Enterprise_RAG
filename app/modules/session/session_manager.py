@@ -14,7 +14,7 @@ from threading import Lock, RLock
 import chromadb
 from llama_index.core import PromptTemplate, VectorStoreIndex
 from llama_index.core.llms import ChatMessage, MessageRole
-from llama_index.core.postprocessor import SentenceTransformerRerank
+from llama_index.core.postprocessor import SentenceTransformerRerank, SimilarityPostprocessor
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -79,13 +79,18 @@ class SessionManager:
     DEFAULT_TOP_K = 8
     DEFAULT_TOP_N = 5
     DEFAULT_RETRIEVER_MODE = "hybrid"
+    RETRIEVAL_HINT_TEXT = (
+        "补充：本次最终保留来源已达到当前上限 {cap} 条，且尾部来源仍有一定相关性。"
+        "如需让结果更集中或更全面，可适时调整检索参数，例如 top_k 或 top_n。"
+    )
     DEFAULT_SYSTEM_PROMPT = (
         "你是一个知识库问答助手。请严格遵循以下规则：\n\n"
         "1. 根据提供的上下文内容回答，不要编造不存在的条款。\n"
         "2. 如果上下文包含不同版本的内容，以最新版本为准。\n"
         "3. 回答需准确、简洁、有逻辑。分点说明时使用编号。\n"
         "4. 如果上下文信息不足以回答，明确说明：根据提供的内容无法确定，不要猜测。\n"
-        "5. 回答基于原文，不要添加个人建议或主观评价。\n\n"
+        "5. 回答基于原文，不要添加个人建议或主观评价。\n"
+        "6. 如果问题在不同情形下会导致结果不同，必须在回答中明确说明差异条件、适用范围和对应结论，不能把依赖情形的答案说成唯一结论。\n\n"
         "上下文内容：\n"
         "---------------------\n"
         "{context_str}\n"
@@ -342,12 +347,15 @@ class SessionManager:
                     query,
                 )
 
+                # 重新排序
                 reranker = _get_reranker(top_n=top_n)
+                # 过滤低相似度结果
+                score_filter = SimilarityPostprocessor(similarity_cutoff=0.1)
                 retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
                 system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
                 query_engine = RetrieverQueryEngine.from_args(
                     retriever=retriever,
-                    node_postprocessors=[reranker],
+                    node_postprocessors=[reranker, score_filter],
                     text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
                     streaming=True,
                 )
@@ -361,6 +369,10 @@ class SessionManager:
 
                 answer = "".join(answer_buf)
                 sources = self._extract_sources(response)
+                hint = self._build_retrieval_hint(sources, top_k=top_k, top_n=top_n)
+                if hint:
+                    answer += hint
+                    yield {"type": "token", "token": hint}
 
                 store.add_message(
                     name,
@@ -444,17 +456,23 @@ class SessionManager:
                 )
 
                 retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
+                # 重新排序
                 reranker = _get_reranker(top_n=top_n)
+                # 过滤低相似度结果
+                score_filter = SimilarityPostprocessor(similarity_cutoff=0.1)
                 system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
                 query_engine = RetrieverQueryEngine.from_args(
                     retriever=retriever,
-                    node_postprocessors=[reranker],
+                    node_postprocessors=[reranker, score_filter],
                     text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
                 )
                 response = query_engine.query(query)
 
                 answer = str(response)
                 sources = self._extract_sources(response)
+                hint = self._build_retrieval_hint(sources, top_k=top_k, top_n=top_n)
+                if hint:
+                    answer += hint
 
                 answer_with_sources = answer
                 if sources:
@@ -498,7 +516,8 @@ class SessionManager:
     def get_config(self, name: str) -> dict:
         with self._session_config_lock(name):
             self._ensure_exists(name)
-            return self._load_config(name)
+            cfg = dict(self._load_config(name))
+        return cfg
 
     def update_config(self, name: str, **kwargs) -> dict:
         with self._session_config_lock(name):
@@ -588,6 +607,26 @@ class SessionManager:
         if "{context_str}" in system_prompt:
             return system_prompt
         return system_prompt + self.CONTEXT_SUFFIX
+
+    def _build_retrieval_hint(self, sources: list[dict], top_k: int, top_n: int) -> str:
+        if not sources:
+            return ""
+
+        cap = min(top_k, top_n)
+        if cap < 4 or len(sources) != cap:
+            return ""
+
+        scores = [source.get("score") for source in sources]
+        if any(score is None for score in scores):
+            return ""
+
+        high_score_count = sum(1 for score in scores if score >= 0.45)
+        if high_score_count / cap < 0.6:
+            return ""
+        if min(scores) < 0.30:
+            return ""
+
+        return "\n\n**💡 " + self.RETRIEVAL_HINT_TEXT.format(cap=cap) + "**"
 
     def _extract_sources(self, response) -> list[dict]:
         sources = []
