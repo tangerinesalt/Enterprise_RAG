@@ -379,7 +379,7 @@ class SessionManager:
                     ChatMessage(
                         role=MessageRole.ASSISTANT,
                         content=answer,
-                        additional_kwargs={"sources": sources} if sources else None,
+                        additional_kwargs={"sources": sources} if sources else {},
                     ),
                 )
                 store.persist(chat_path)

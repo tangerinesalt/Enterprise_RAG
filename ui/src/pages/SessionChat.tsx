@@ -77,6 +77,12 @@ export default function SessionChat() {
   };
 
   const handleSelectChat = (chatFile: string) => {
+    // Cancel any in-flight stream before switching to a different chat
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setLoading(false);
+    }
     setMessages([]);
     setActiveChat(chatFile);
     if (!name) return;
@@ -223,6 +229,12 @@ export default function SessionChat() {
   // 聊天删除：从服务器获取最新列表再计算 activeChat，修复 race condition
   const handleDeleteChat = async (chatFile: string) => {
     if (!name || !confirm(`确定删除聊天「${chatFile}」？`)) return;
+    // Cancel any in-flight stream before deleting the currently selected chat
+    if (activeChat === chatFile && abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setLoading(false);
+    }
     await sessionApi.deleteChat(name, chatFile);
     const updated = await sessionApi.listChats(name);
     setChats(updated.chats);

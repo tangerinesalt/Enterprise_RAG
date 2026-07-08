@@ -76,61 +76,93 @@ export default function KbDetail() {
     // 在 SSE 请求之前就设置进度状态，确保 React 立即渲染"索引中"UI
     setIndexingProgress(prev => ({ ...prev, [target]: { current: 0, total: 1, pct: 0 } }));
 
-    await kbApi.indexStream(name, {
-      onStart: (file, totalChunks) => {
-        setIndexingProgress(prev => ({ ...prev, [file]: { current: 0, total: totalChunks, pct: 0 } }));
-      },
-      onProgress: (file, current, total, pct) => {
-        setIndexingProgress(prev => ({ ...prev, [file]: { current, total, pct } }));
-      },
-      onDone: (file, chunks) => {
-        setIndexingProgress(prev => {
-          const next = { ...prev };
-          delete next[file];
-          return next;
-        });
-        // 直接本地更新文件状态，避免 load() 的异步请求造成两次渲染覆盖进度
-        setFiles(prev => prev.map(f =>
-          f.name === file ? { ...f, indexed: 'indexed', chunks } : f
-        ));
-      },
-      onError: (file, message) => {
-        console.error(`Index error for ${file}: ${message}`);
-        load();
-      },
-    }, target);
+    try {
+      await kbApi.indexStream(name, {
+        onStart: (file, totalChunks) => {
+          setIndexingProgress(prev => ({ ...prev, [file]: { current: 0, total: totalChunks, pct: 0 } }));
+        },
+        onProgress: (file, current, total, pct) => {
+          setIndexingProgress(prev => ({ ...prev, [file]: { current, total, pct } }));
+        },
+        onDone: (file, chunks) => {
+          setIndexingProgress(prev => {
+            const next = { ...prev };
+            delete next[file];
+            return next;
+          });
+          // 直接本地更新文件状态，避免 load() 的异步请求造成两次渲染覆盖进度
+          setFiles(prev => prev.map(f =>
+            f.name === file ? { ...f, indexed: 'indexed', chunks } : f
+          ));
+        },
+        onError: (file, message) => {
+          console.error(`Index error for ${file}: ${message}`);
+          // 清除该文件的乐观进度，避免卡在"索引中"状态
+          setIndexingProgress(prev => {
+            const next = { ...prev };
+            delete next[file];
+            return next;
+          });
+          load();
+        },
+      }, target);
+    } catch (e) {
+      console.error(`Index request failed for ${target}:`, e);
+      // 请求级失败：清除乐观进度
+      setIndexingProgress(prev => {
+        const next = { ...prev };
+        delete next[target];
+        return next;
+      });
+      load();
+    }
   };
 
   // SSE 流式索引全部
   const handleIndexAll = async () => {
     if (!name) return;
     setIsIndexingAll(true);
-    await kbApi.indexStream(name, {
-      onStart: (file, totalChunks) => {
-        setIndexingProgress(prev => ({ ...prev, [file]: { current: 0, total: totalChunks, pct: 0 } }));
-      },
-      onProgress: (file, current, total, pct) => {
-        setIndexingProgress(prev => ({ ...prev, [file]: { current, total, pct } }));
-      },
-      onDone: (file, chunks) => {
-        setIndexingProgress(prev => {
-          const next = { ...prev };
-          delete next[file];
-          return next;
-        });
-        // 本地更新文件状态，让已完成文件立即显示"✓ 已索引"，不影响其他文件的进度
-        setFiles(prev => prev.map(f =>
-          f.name === file ? { ...f, indexed: 'indexed', chunks } : f
-        ));
-      },
-      onAllDone: (_files) => {
-        setIsIndexingAll(false);
-        load(); // 全部完成，刷新状态
-      },
-      onError: (file, message) => {
-        console.error(`Index error for ${file}: ${message}`);
-      },
-    }, undefined, true);
+    try {
+      await kbApi.indexStream(name, {
+        onStart: (file, totalChunks) => {
+          setIndexingProgress(prev => ({ ...prev, [file]: { current: 0, total: totalChunks, pct: 0 } }));
+        },
+        onProgress: (file, current, total, pct) => {
+          setIndexingProgress(prev => ({ ...prev, [file]: { current, total, pct } }));
+        },
+        onDone: (file, chunks) => {
+          setIndexingProgress(prev => {
+            const next = { ...prev };
+            delete next[file];
+            return next;
+          });
+          // 本地更新文件状态，让已完成文件立即显示"✓ 已索引"，不影响其他文件的进度
+          setFiles(prev => prev.map(f =>
+            f.name === file ? { ...f, indexed: 'indexed', chunks } : f
+          ));
+        },
+        onAllDone: (_files) => {
+          setIsIndexingAll(false);
+          load(); // 全部完成，刷新状态
+        },
+        onError: (file, message) => {
+          console.error(`Index error for ${file}: ${message}`);
+          // 清除该文件的乐观进度，避免卡在"索引中"状态
+          setIndexingProgress(prev => {
+            const next = { ...prev };
+            delete next[file];
+            return next;
+          });
+          load();
+        },
+      }, undefined, true);
+    } catch (e) {
+      console.error('Index all request failed:', e);
+      // 请求级失败：清除所有乐观进度和批量索引状态
+      setIndexingProgress({});
+      setIsIndexingAll(false);
+      load();
+    }
   };
 
   const getProgress = (fileName: string): ProgressInfo | undefined => indexingProgress[fileName];

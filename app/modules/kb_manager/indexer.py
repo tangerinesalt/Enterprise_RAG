@@ -395,6 +395,7 @@ class Indexer:
 
         # 自定义组合分块：页面类型检测 → SentenceSplitter → metadata 注入
         nodes = chunk_documents(documents)
+        chunk_count = len(nodes)
 
         # 从 nodes 构建索引
         index = VectorStoreIndex(
@@ -402,7 +403,8 @@ class Indexer:
             storage_context=storage_context,
         )
 
-        return collection.count()
+        _kb.set_file_status(kb_name, filename, "indexed", chunks=chunk_count)
+        return chunk_count
 
     # ── 流式索引（逐 chunk 报告进度）───────────
 
@@ -462,7 +464,7 @@ class Indexer:
             storage_context=storage_context,
         )
 
-        chunk_count = collection.count()
+        chunk_count = total
         _kb.set_file_status(kb_name, filename, "indexed", chunks=chunk_count)
         yield {"type": "index_done", "file": filename, "chunks": chunk_count}
 
