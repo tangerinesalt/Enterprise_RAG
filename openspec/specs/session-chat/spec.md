@@ -1,10 +1,12 @@
 ## Purpose
 
 Define requirements for session chat persistence, retrieval, and answer generation, covering both CLI and streaming interfaces.
+
 ## Requirements
+
 ### Requirement: System SHALL persist chat history via SimpleChatStore
 
-The system SHALL persist each conversation to a specific chat file via `SimpleChatStore`. When a request provides `chat_file`, the system SHALL load and append to that exact file instead of inferring the target from a session-global current chat.
+The system SHALL persist each conversation to a specific chat file via `SimpleChatStore`. When a request provides `chat_file`, the system SHALL load and append to that exact file instead of inferring the target from a session-global current chat. Both synchronous chat and streaming chat SHALL persist assistant messages using the same structured format, with assistant text in `content` and structured source citations in `additional_kwargs.sources`.
 
 #### Scenario: Chat file creates per session
 - **WHEN** user runs `session chat my-session "question"` for the first time without specifying `chat_file`
@@ -23,12 +25,23 @@ The system SHALL persist each conversation to a specific chat file via `SimpleCh
 - **THEN** the system appends the conversation to `chat-a.json`
 - **THEN** it does NOT switch to `chat-b.json` because of session-global metadata
 
+#### Scenario: Sync and stream chat persist identical assistant structure
+- **WHEN** one assistant response is produced by `/api/session/chat` and another is produced by `/api/session/chat/stream`
+- **THEN** both persisted assistant messages store answer text in `content`
+- **THEN** both persisted assistant messages store structured citations in `additional_kwargs.sources`
+- **THEN** history readers do not need different parsing logic for sync vs stream records
+
+#### Scenario: Legacy sync records degrade to body-only history
+- **WHEN** a legacy persisted assistant message does not contain `additional_kwargs.sources`
+- **THEN** history readers still receive the assistant `content`
+- **THEN** the system does NOT synthesize structured sources by reparsing that legacy message body
+
 ### Requirement: System SHALL retrieve and generate answers
 
 The system SHALL retrieve relevant chunks from the bound knowledge base and generate an answer via LLM.
 
 #### Scenario: Chat with bound KB
-- **WHEN** user runs `python -m app.modules.kb_manager.cli session chat my-session "什么是A1？"`
+- **WHEN** user runs `python -m app.modules.kb_manager.cli session chat my-session "what is A1?"`
 - **THEN** the session's bound KB is loaded from `config.json`
 - **THEN** ChromaDB vectors are queried for top-5 relevant chunks
 - **THEN** the answer is generated via Ollama LLM
@@ -41,7 +54,7 @@ The system SHALL retrieve relevant chunks from the bound knowledge base and gene
 
 ### Requirement: Frontend SHALL not auto-select chat on session page load
 
-The frontend SHALL NOT automatically select or load any chat file when the user enters a session page. Chat files are loaded only on explicit user action (clicking a chat in the sidebar).
+The frontend SHALL NOT automatically select or load any chat file when the user enters a session page.
 
 #### Scenario: No chat auto-selected on entry
 - **WHEN** user navigates to `/session/<name>` via web UI
@@ -51,16 +64,22 @@ The frontend SHALL NOT automatically select or load any chat file when the user 
 
 ### Requirement: System SHALL retrieve with session-level top_k
 
-The system SHALL apply the session's `top_k` value to vector retrieval, BM25 retrieval, and RRF fusion.
+The system SHALL apply the session's `top_k` value to vector retrieval, BM25 retrieval, and RRF fusion. Different `top_k` values SHALL produce correctly isolated BM25 cache entries.
 
 #### Scenario: Chat uses session top_k
-- **WHEN** user runs `session chat my-session "问题"` and config has `top_k: 10`
+- **WHEN** user runs `session chat my-session "question"` and config has `top_k: 10`
 - **THEN** `VectorIndexRetriever(similarity_top_k=10)` is used
 - **THEN** `BM25Retriever(similarity_top_k=10)` is used
 - **THEN** `_rrf_fusion` returns the top 10 fused results
 
+#### Scenario: Changing top_k does not reuse stale BM25 cache
+- **WHEN** a first query uses `top_k=2` and caches the BM25 retriever
+- **AND** a second query uses `top_k=5` on the same unchanged corpus
+- **THEN** the second query builds a fresh BM25 retriever with `similarity_top_k=5`
+- **THEN** the BM25 cache stores entries for both `top_k=2` and `top_k=5` independently
+
 #### Scenario: Chat uses session top_n
-- **WHEN** user runs `session chat my-session "问题"` and config has `top_n: 7`
+- **WHEN** user runs `session chat my-session "question"` and config has `top_n: 7`
 - **THEN** `SentenceTransformerRerank(top_n=7)` is used as node postprocessor
 
 #### Scenario: Stream chat also respects params
@@ -96,3 +115,29 @@ The session config SHALL support `retriever_mode` field: `"hybrid"` (default) or
 - **THEN** only VectorIndexRetriever (with threshold filter) is used
 - **THEN** the reranker is applied directly on vector results
 
+### Requirement: Hybrid retrieval SHALL refresh BM25 corpus after index content changes
+
+The system SHALL ensure the BM25 side of hybrid retrieval is rebuilt or invalidated whenever the underlying indexed corpus changes.
+
+#### Scenario: Reindex with unchanged chunk count refreshes BM25 corpus
+- **WHEN** a file is reindexed and the resulting chunk count is the same as before but text changed
+- **THEN** subsequent hybrid retrieval uses the new BM25 corpus
+- **THEN** stale chunk text from the previous index is not returned through BM25 cache reuse
+
+#### Scenario: Query reuse within unchanged corpus may still use cache
+- **WHEN** repeated queries run against a knowledge base whose indexed corpus has not changed
+- **THEN** the system may reuse an in-process BM25 cache
+- **THEN** the cache key reflects corpus identity rather than only collection size
+
+### Requirement: History readers SHALL recover structured sources from persisted chat records
+
+The system SHALL expose structured source information from persisted assistant messages.
+
+#### Scenario: Get messages returns persisted structured sources
+- **WHEN** a persisted assistant message contains `additional_kwargs.sources`
+- **THEN** history readers receive those sources as part of the chat message payload
+
+#### Scenario: Legacy sync records degrade to body-only history
+- **WHEN** a legacy persisted assistant message does not contain `additional_kwargs.sources`
+- **THEN** history readers still receive the assistant `content`
+- **THEN** the system does NOT synthesize structured sources by reparsing that legacy message body

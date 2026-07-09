@@ -1,7 +1,9 @@
 ## Purpose
 
 Define the REST API endpoints for managing sessions, binding knowledge bases, sending chat requests, and updating session configuration.
+
 ## Requirements
+
 ### Requirement: API SHALL list all sessions
 
 The system SHALL return a list of all sessions.
@@ -12,11 +14,16 @@ The system SHALL return a list of all sessions.
 
 ### Requirement: API SHALL create a session
 
-The system SHALL create a new session.
+The system SHALL create a new session, and the provided session name SHALL satisfy the system's path-safe identifier rules.
 
 #### Scenario: POST /api/session
 - **WHEN** client sends `POST /api/session` with `{"name": "my-session"}`
 - **THEN** a new session is created
+
+#### Scenario: POST /api/session rejects unsafe session name
+- **WHEN** client sends `POST /api/session` with a session name containing path separators, `..`, or absolute-path semantics
+- **THEN** the API rejects the request
+- **THEN** no session directory is created outside or inside the session root for that invalid name
 
 ### Requirement: API SHALL bind a knowledge base to a session
 
@@ -28,7 +35,7 @@ The system SHALL bind a KB to a session.
 
 ### Requirement: API SHALL support chat
 
-The system SHALL accept a query and return an AI-generated answer with sources. When `chat_file` is provided, the API SHALL treat it as the authoritative target chat for that request.
+The system SHALL accept a query and return an AI-generated answer with sources. When `chat_file` is provided, the API SHALL treat it as the authoritative target chat for that request, and that target SHALL resolve only within the session's chat directory.
 
 #### Scenario: POST /api/session/chat
 - **WHEN** client sends `POST /api/session/chat` with `{"name": "my-session", "query": "问题"}`
@@ -51,6 +58,38 @@ The system SHALL accept a query and return an AI-generated answer with sources. 
 - **WHEN** two requests target the same session but different `chat_file` values
 - **THEN** the API allows them to progress concurrently
 - **THEN** each request returns and persists against its own target chat file
+
+#### Scenario: Chat rejects unsafe chat file target
+- **WHEN** client sends `/api/session/chat` or `/api/session/chat/stream` with a `chat_file` value that resolves outside `sessions/<name>/chats/`
+- **THEN** the API rejects the request
+- **THEN** no out-of-root file is read or written
+
+### Requirement: API SHALL read chat messages only from the session chat root
+
+The system SHALL return chat messages only when the requested `chat_file` resolves within the target session's chat directory.
+
+#### Scenario: GET /api/session/{name}/chats/{chat_file} returns in-root chat
+- **WHEN** client requests an existing chat file under `sessions/<name>/chats/`
+- **THEN** the API returns that chat's messages
+
+#### Scenario: GET /api/session/{name}/chats/{chat_file} rejects unsafe target
+- **WHEN** client requests a `chat_file` that resolves outside the session chat root
+- **THEN** the API rejects the request
+- **THEN** no out-of-root file is read
+
+### Requirement: API SHALL delete chat files only from the session chat root
+
+The system SHALL delete chat files only when the requested `chat_file` resolves within the target session's chat directory.
+
+#### Scenario: DELETE /api/session/{name}/chats/{chat_file} deletes in-root chat
+- **WHEN** client requests deletion of an existing chat file under `sessions/<name>/chats/`
+- **THEN** the API deletes that chat file
+- **THEN** related session metadata is updated consistently
+
+#### Scenario: DELETE /api/session/{name}/chats/{chat_file} rejects unsafe target
+- **WHEN** client sends a `chat_file` that resolves outside the session chat root
+- **THEN** the API rejects the request
+- **THEN** no out-of-root file is deleted
 
 ### Requirement: API SHALL update session retrieval config
 
@@ -98,3 +137,11 @@ The streaming chat API SHALL return structured error payloads so that clients ca
 - **THEN** `code` is one of `KB_NOT_BOUND`, `KB_NOT_FOUND`, `KB_INDEX_MISSING`, `KB_VECTOR_EMPTY`, `MODEL_UNAVAILABLE`, or `RUNTIME_ERROR`
 - **THEN** clients can treat the code set as a stable contract for branching and tests
 
+### Requirement: API SHALL reject requests with Windows-illegal characters in identifier fields
+
+The system SHALL reject session names, KB names, and filenames that contain characters illegal on Windows filesystems (`<` `>` `:` `"` `|` `?` `*`).
+
+#### Scenario: Reject KB name with Windows-illegal char
+- **WHEN** client sends a KB name containing `?` or `*` or `<` or `>` or `|` or `:` or `"` 
+- **THEN** the API rejects the request with 400
+- **THEN** no directory is created

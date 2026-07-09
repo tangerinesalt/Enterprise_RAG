@@ -4,6 +4,6 @@
 - SessionError: 操作异常
 """
 
-from app.modules.session.session_manager import SessionManager, SessionError
+from app.modules.session.session_manager import SessionManager, SessionError, SessionPathError
 
-__all__ = ["SessionManager", "SessionError"]
+__all__ = ["SessionManager", "SessionError", "SessionPathError"]

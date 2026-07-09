@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 
+from app.utils.storage_paths import basename_then_validate, child_path, resolve_under_root, validate_relative_path
 from config.settings import KB_ROOT
 
 # 索引时跳过的临时文件
@@ -19,136 +20,179 @@ IGNORED_DIRS = {"__pycache__", ".git", ".svn"}
 
 class KnowledgeBaseError(Exception):
     """知识库操作异常基类"""
-    pass
+
+
+class KnowledgeBasePathError(KnowledgeBaseError):
+    """知识库路径或名称不合法"""
 
 
 class KnowledgeBase:
     """知识库管理"""
 
     def __init__(self, root: str = KB_ROOT):
-        self.root = root
+        self.root = os.path.abspath(root)
 
-    # ── 路径 ─────────────────────────────────
+    def _wrap_path_error(self, exc: ValueError) -> KnowledgeBasePathError:
+        return KnowledgeBasePathError(str(exc))
+
+    def _normalize_file_ref(self, filename: str, label: str = "file path") -> str:
+        try:
+            return validate_relative_path(filename, label)
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
+
+    def validate_upload_name(self, filename: str) -> str:
+        try:
+            return basename_then_validate(filename, "filename")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
+
+    # Path helpers
 
     def kb_path(self, name: str) -> str:
-        return os.path.join(self.root, name)
+        try:
+            return child_path(self.root, name, "knowledge base name")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
 
     def files_path(self, name: str) -> str:
-        return os.path.join(self.root, name, "files")
+        return os.path.join(self.kb_path(name), "files")
 
     def vector_db_path(self, name: str) -> str:
-        return os.path.join(self.root, name, "vector_db")
+        return os.path.join(self.kb_path(name), "vector_db")
 
-    # ── 索引状态持久化 ──────────────────────
+    # Index status persistence
 
     def _index_status_path(self, name: str) -> str:
-        return os.path.join(self.root, name, ".index_status.json")
+        return os.path.join(self.kb_path(name), ".index_status.json")
+
+    def _default_index_status(self) -> dict:
+        return {"files": {}, "corpus_version": 0}
 
     def _load_index_status(self, name: str) -> dict:
         path = self._index_status_path(name)
         if not os.path.isfile(path):
-            return {"files": {}}
+            return self._default_index_status()
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
         except Exception:
-            return {"files": {}}
+            return self._default_index_status()
+
+        if "files" not in data:
+            data["files"] = {}
+        if "corpus_version" not in data:
+            data["corpus_version"] = 0
+        return data
 
     def _save_index_status(self, name: str, data: dict):
+        payload = dict(data)
+        if "files" not in payload:
+            payload["files"] = {}
+        if "corpus_version" not in payload:
+            payload["corpus_version"] = 0
+
         path = self._index_status_path(name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
 
     def set_file_status(self, name: str, filename: str, status: str, chunks: int | None = None):
-        """设置文件的索引状态。status: 'pending' | 'indexed'"""
+        normalized = self._normalize_file_ref(filename)
         data = self._load_index_status(name)
-        entry = data["files"].get(filename, {})
+        entry = data["files"].get(normalized, {})
         entry["status"] = status
         if chunks is not None:
             entry["chunks"] = chunks
         if status == "indexed":
             import datetime
+
             entry["indexed_at"] = datetime.datetime.now().isoformat()
         elif status == "pending":
             entry["chunks"] = None
             entry["indexed_at"] = None
-        data["files"][filename] = entry
+        data["files"][normalized] = entry
         self._save_index_status(name, data)
 
     def get_file_status(self, name: str, filename: str) -> dict:
-        """获取文件索引状态。返回 {"status": str, "chunks": int|null, "indexed_at": str|null}"""
+        normalized = self._normalize_file_ref(filename)
         data = self._load_index_status(name)
-        return data["files"].get(filename, {"status": "pending", "chunks": None, "indexed_at": None})
+        return data["files"].get(normalized, {"status": "pending", "chunks": None, "indexed_at": None})
 
     def remove_file_status(self, name: str, filename: str):
-        """删除文件的索引状态条目。"""
+        normalized = self._normalize_file_ref(filename)
         data = self._load_index_status(name)
-        data["files"].pop(filename, None)
+        data["files"].pop(normalized, None)
         self._save_index_status(name, data)
 
-    # ── CRUD ────────────────────────────────
+    def get_corpus_version(self, name: str) -> int:
+        return int(self._load_index_status(name).get("corpus_version", 0))
+
+    def bump_corpus_version(self, name: str) -> int:
+        data = self._load_index_status(name)
+        data["corpus_version"] = int(data.get("corpus_version", 0)) + 1
+        self._save_index_status(name, data)
+        return data["corpus_version"]
+
+    # CRUD
 
     def create(self, name: str) -> str:
-        """创建知识库（目录结构）。返回知识库路径。"""
         path = self.kb_path(name)
         if os.path.exists(path):
             raise KnowledgeBaseError(f"知识库 '{name}' 已存在")
         os.makedirs(self.files_path(name), exist_ok=True)
         os.makedirs(self.vector_db_path(name), exist_ok=True)
-        # 创建空的索引状态文件，确保后续操作可直接读写
-        self._save_index_status(name, {"files": {}})
+        self._save_index_status(name, self._default_index_status())
         return path
 
     def destroy(self, name: str):
-        """删除整个知识库（递归删除所有文件、向量库）。"""
         path = self.kb_path(name)
         if not os.path.exists(path):
             raise KnowledgeBaseError(f"知识库 '{name}' 不存在")
         shutil.rmtree(path)
 
     def exists(self, name: str) -> bool:
-        return os.path.isdir(self.kb_path(name))
+        try:
+            path = self.kb_path(name)
+        except KnowledgeBasePathError:
+            return False
+        return os.path.isdir(path)
 
     def ensure_exists(self, name: str):
-        if not self.exists(name):
+        path = self.kb_path(name)
+        if not os.path.isdir(path):
             raise KnowledgeBaseError(f"知识库 '{name}' 不存在")
 
     def list_all(self) -> list[str]:
-        """列出所有知识库名称"""
         if not os.path.isdir(self.root):
             return []
-        return sorted([
-            d for d in os.listdir(self.root)
-            if os.path.isdir(os.path.join(self.root, d))
-        ])
+        return sorted(
+            [entry for entry in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, entry))]
+        )
 
     def list_files(self, name: str) -> list[dict]:
-        """列出知识库中的文件和子目录"""
         self.ensure_exists(name)
-        fdir = self.files_path(name)
-        if not os.path.isdir(fdir):
+        files_dir = self.files_path(name)
+        if not os.path.isdir(files_dir):
             return []
+
         result = []
-        for f in sorted(os.listdir(fdir)):
-            fpath = os.path.join(fdir, f)
-            if os.path.isfile(fpath):
-                size = os.path.getsize(fpath)
-                result.append({
-                    "name": f, "size": size,
-                    "size_str": _fmt_size(size), "type": "file",
-                })
-            elif os.path.isdir(fpath):
-                count = _count_files(fpath)
-                result.append({
-                    "name": f, "type": "folder",
-                    "files": count, "size_str": f"{count} files",
-                })
+        for entry in sorted(os.listdir(files_dir)):
+            entry_path = os.path.join(files_dir, entry)
+            if os.path.isfile(entry_path):
+                size = os.path.getsize(entry_path)
+                result.append({"name": entry, "size": size, "size_str": _fmt_size(size), "type": "file"})
+            elif os.path.isdir(entry_path):
+                count = _count_files(entry_path)
+                result.append({"name": entry, "type": "folder", "files": count, "size_str": f"{count} files"})
         return result
 
     def file_path(self, name: str, filename: str) -> str:
-        """文件或文件夹的完整路径（自动规范化路径分隔符）"""
-        return os.path.normpath(os.path.join(self.files_path(name), filename))
+        normalized = self._normalize_file_ref(filename)
+        try:
+            return resolve_under_root(self.files_path(name), normalized, "file path")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
 
     def file_exists(self, name: str, filename: str) -> bool:
         return os.path.isfile(self.file_path(name, filename))
@@ -156,14 +200,13 @@ class KnowledgeBase:
     def folder_exists(self, name: str, folder_name: str) -> bool:
         return os.path.isdir(self.file_path(name, folder_name))
 
-    # ── 文件操作 ────────────────────────────
+    # File operations
 
     def copy_file(self, name: str, source_path: str) -> str:
-        """复制文件到知识库（同名保存）。返回目标路径。"""
         self.ensure_exists(name)
         if not os.path.isfile(source_path):
             raise KnowledgeBaseError(f"文件不存在: {source_path}")
-        filename = os.path.basename(source_path)
+        filename = self.validate_upload_name(os.path.basename(source_path))
         dest_name = self._unique_filename(name, filename)
         dest = self.file_path(name, dest_name)
         shutil.copy2(source_path, dest)
@@ -171,110 +214,94 @@ class KnowledgeBase:
         return dest
 
     def remove_file(self, name: str, filename: str):
-        """删除知识库中的文件副本"""
         self.ensure_exists(name)
-        fpath = self.file_path(name, filename)
-        if not os.path.isfile(fpath):
-            raise KnowledgeBaseError(
-                f"文件 '{filename}' 不存在于知识库 '{name}' 中"
-            )
-        os.remove(fpath)
+        normalized = self._normalize_file_ref(filename)
+        path = self.file_path(name, normalized)
+        if not os.path.isfile(path):
+            raise KnowledgeBaseError(f"文件 '{filename}' 不存在于知识库 '{name}' 中")
+        os.remove(path)
 
     def _unique_filename(self, name: str, filename: str) -> str:
-        """生成 files/ 中不重复的文件名，同名时加 _1, _2 后缀。"""
-        fdir = self.files_path(name)
-        if not os.path.exists(os.path.join(fdir, filename)):
+        filename = self.validate_upload_name(filename)
+        files_dir = self.files_path(name)
+        if not os.path.exists(os.path.join(files_dir, filename)):
             return filename
-        base, ext = os.path.splitext(filename)
-        i = 1
-        while True:
-            candidate = f"{base}_{i}{ext}"
-            if not os.path.exists(os.path.join(fdir, candidate)):
-                return candidate
-            i += 1
 
-    # ── 文件夹操作 ──────────────────────────
+        base, ext = os.path.splitext(filename)
+        index = 1
+        while True:
+            candidate = f"{base}_{index}{ext}"
+            if not os.path.exists(os.path.join(files_dir, candidate)):
+                return candidate
+            index += 1
+
+    # Folder operations
 
     def upload_folder(self, name: str, source_dir: str) -> list[str]:
-        """
-        将文件夹递归复制到知识库，所有文件平铺到 files/ 根目录。
-        同名文件自动重命名：file.pdf → file_1.pdf。返回复制的文件名列表。
-        """
         self.ensure_exists(name)
         if not os.path.isdir(source_dir):
             raise KnowledgeBaseError(f"目录不存在: {source_dir}")
 
         copied = []
         for root, dirs, files in os.walk(source_dir):
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-            for f in files:
-                if f in IGNORED_FILES or f.startswith("._"):
+            dirs[:] = [entry for entry in dirs if entry not in IGNORED_DIRS]
+            for filename in files:
+                if filename in IGNORED_FILES or filename.startswith("._"):
                     continue
-                src = os.path.join(root, f)
-                dest_name = self._unique_filename(name, f)
-                shutil.copy2(src, self.file_path(name, dest_name))
+                source = os.path.join(root, filename)
+                dest_name = self._unique_filename(name, filename)
+                shutil.copy2(source, self.file_path(name, dest_name))
                 self.set_file_status(name, dest_name, "pending")
                 copied.append(dest_name)
-
         return copied
 
     def list_folder_files(self, name: str, folder_name: str) -> list[str]:
-        """
-        递归列出文件夹中所有文件（相对路径）。
-        用于索引和删除时的文件列表。
-        """
-        fdir = os.path.join(self.files_path(name), folder_name)
-        if not os.path.isdir(fdir):
+        folder_path = self.file_path(name, folder_name)
+        if not os.path.isdir(folder_path):
             return []
+
         result = []
-        for root, dirs, files in os.walk(fdir):
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-            for f in files:
-                if f in IGNORED_FILES or f.startswith("._"):
+        for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [entry for entry in dirs if entry not in IGNORED_DIRS]
+            for filename in files:
+                if filename in IGNORED_FILES or filename.startswith("._"):
                     continue
-                full = os.path.join(root, f)
-                rel = os.path.relpath(full, self.files_path(name))
-                result.append(rel.replace("\\", "/"))
+                full_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(full_path, self.files_path(name)).replace("\\", "/")
+                result.append(rel_path)
         return result
 
     def delete_file(self, name: str, filename: str):
-        """删除知识库中的单个文件。"""
         self.ensure_exists(name)
-        fpath = self.file_path(name, filename)
-        if not os.path.isfile(fpath):
+        normalized = self._normalize_file_ref(filename)
+        file_path = self.file_path(name, normalized)
+        if not os.path.isfile(file_path):
             raise KnowledgeBaseError(f"文件 '{filename}' 不存在")
-        os.remove(fpath)
-        # 清理索引状态和向量
-        self.remove_file_status(name, filename)
+        os.remove(file_path)
+        self.remove_file_status(name, normalized)
         from app.modules.kb_manager.indexer import Indexer
-        Indexer().delete_vectors(name, filename)
+
+        Indexer().delete_vectors(name, normalized)
 
     def delete_folder(self, name: str, folder_name: str) -> list[str]:
-        """
-        删除知识库中的文件夹及其所有文件。
-        返回被删除的文件列表（相对路径）。
-        """
         self.ensure_exists(name)
-        fdir = os.path.join(self.files_path(name), folder_name)
-        if not os.path.isdir(fdir):
-            raise KnowledgeBaseError(
-                f"文件夹 '{folder_name}' 不存在于知识库 '{name}' 中"
-            )
+        folder_path = self.file_path(name, folder_name)
+        if not os.path.isdir(folder_path):
+            raise KnowledgeBaseError(f"文件夹 '{folder_name}' 不存在于知识库 '{name}' 中")
 
         files = self.list_folder_files(name, folder_name)
-        for f in files:
-            self.remove_file_status(name, f)
-        shutil.rmtree(fdir)
+        for filename in files:
+            self.remove_file_status(name, filename)
+        shutil.rmtree(folder_path)
         return files
 
 
 def _count_files(directory: str) -> int:
-    """递归统计文件数（不包含忽略文件）"""
     count = 0
-    for root, dirs, files in os.walk(directory):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        for f in files:
-            if f not in IGNORED_FILES and not f.startswith("._"):
+    for _root, dirs, files in os.walk(directory):
+        dirs[:] = [entry for entry in dirs if entry not in IGNORED_DIRS]
+        for filename in files:
+            if filename not in IGNORED_FILES and not filename.startswith("._"):
                 count += 1
     return count
 
@@ -282,7 +309,6 @@ def _count_files(directory: str) -> int:
 def _fmt_size(size: int) -> str:
     if size < 1024:
         return f"{size}B"
-    elif size < 1024 ** 2:
+    if size < 1024**2:
         return f"{size / 1024:.1f}KB"
-    else:
-        return f"{size / 1024 ** 2:.1f}MB"
+    return f"{size / 1024**2:.1f}MB"

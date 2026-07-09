@@ -21,6 +21,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from app.modules.kb_manager import KnowledgeBase
 from app.modules.retrieval import build_retriever
+from app.utils.storage_paths import child_path, resolve_under_root, validate_leaf_name
 from app.utils.logging import get_logger
 from config.init import init_models
 
@@ -75,6 +76,10 @@ class SessionError(Exception):
     pass
 
 
+class SessionPathError(SessionError):
+    pass
+
+
 class SessionManager:
     DEFAULT_TOP_K = 8
     DEFAULT_TOP_N = 5
@@ -107,14 +112,33 @@ class SessionManager:
         "回答："
     )
 
+    def _wrap_path_error(self, exc: ValueError) -> SessionPathError:
+        return SessionPathError(str(exc))
+
+    def _normalize_chat_file(self, chat_file: str) -> str:
+        try:
+            return validate_leaf_name(chat_file, "chat file")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
+
     def session_path(self, name: str) -> str:
-        return os.path.join(SESSION_ROOT, name)
+        try:
+            return child_path(SESSION_ROOT, name, "session name")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
 
     def config_path(self, name: str) -> str:
         return os.path.join(self.session_path(name), "config.json")
 
     def chats_dir(self, name: str) -> str:
         return os.path.join(self.session_path(name), "chats")
+
+    def chat_path(self, name: str, chat_file: str) -> str:
+        normalized = self._normalize_chat_file(chat_file)
+        try:
+            return resolve_under_root(self.chats_dir(name), normalized, "chat file")
+        except ValueError as exc:
+            raise self._wrap_path_error(exc) from exc
 
     def _session_config_lock(self, name: str) -> RLock:
         with _session_config_locks_guard:
@@ -157,7 +181,8 @@ class SessionManager:
         with self._session_config_lock(name):
             if chat_file:
                 self._ensure_exists(name)
-                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                chat_file = self._normalize_chat_file(chat_file)
+                chat_path = self.chat_path(name, chat_file)
                 if not os.path.isfile(chat_path):
                     raise SessionError(f"聊天文件 '{chat_file}' 不存在")
                 with self._chat_file_lock(name, chat_file):
@@ -178,7 +203,11 @@ class SessionManager:
             shutil.rmtree(path)
 
     def exists(self, name: str) -> bool:
-        return os.path.isdir(self.session_path(name))
+        try:
+            path = self.session_path(name)
+        except SessionPathError:
+            return False
+        return os.path.isdir(path)
 
     def _ensure_exists(self, name: str):
         if not self.exists(name):
@@ -263,7 +292,8 @@ class SessionManager:
     def select_chat(self, name: str, chat_file: str):
         with self._session_config_lock(name):
             self._ensure_exists(name)
-            chat_path = os.path.join(self.chats_dir(name), chat_file)
+            chat_file = self._normalize_chat_file(chat_file)
+            chat_path = self.chat_path(name, chat_file)
             if not os.path.isfile(chat_path):
                 raise SessionError(f"聊天文件 '{chat_file}' 不存在")
             config = self._load_config(name)
@@ -272,7 +302,8 @@ class SessionManager:
 
     def get_messages(self, name: str, chat_file: str) -> list[dict]:
         self._ensure_exists(name)
-        chat_path = os.path.join(self.chats_dir(name), chat_file)
+        chat_file = self._normalize_chat_file(chat_file)
+        chat_path = self.chat_path(name, chat_file)
         if not os.path.isfile(chat_path):
             raise SessionError(f"聊天文件 '{chat_file}' 不存在")
 
@@ -287,7 +318,7 @@ class SessionManager:
                 {
                     "role": m.role.value if hasattr(m.role, "value") else str(m.role),
                     "content": m.content,
-                    "additional_kwargs": m.additional_kwargs,
+                    "additional_kwargs": m.additional_kwargs if isinstance(m.additional_kwargs, dict) else {},
                 }
                 for m in messages
             ]
@@ -376,11 +407,7 @@ class SessionManager:
 
                 store.add_message(
                     name,
-                    ChatMessage(
-                        role=MessageRole.ASSISTANT,
-                        content=answer,
-                        additional_kwargs={"sources": sources} if sources else {},
-                    ),
+                    self._build_assistant_message(answer, sources),
                 )
                 store.persist(chat_path)
 
@@ -474,13 +501,7 @@ class SessionManager:
                 if hint:
                     answer += hint
 
-                answer_with_sources = answer
-                if sources:
-                    answer_with_sources += "\n\n---\n来源:\n"
-                    for index_number, source in enumerate(sources, start=1):
-                        answer_with_sources += f"\n[{index_number}] (相关度 {source['score']}) {source['text']}"
-
-                store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=answer_with_sources))
+                store.add_message(name, self._build_assistant_message(answer, sources))
                 store.persist(chat_path)
 
                 elapsed = time.monotonic() - started_at
@@ -547,18 +568,26 @@ class SessionManager:
         store.add_message(name, ChatMessage(role=MessageRole.ASSISTANT, content=f"❌ {message}"))
         store.persist(chat_path)
 
+    def _build_assistant_message(self, answer: str, sources: list[dict]) -> ChatMessage:
+        return ChatMessage(
+            role=MessageRole.ASSISTANT,
+            content=answer,
+            additional_kwargs={"sources": sources} if sources else {},
+        )
+
     def _resolve_chat_target(self, name: str, chat_file: str = None) -> tuple[dict, str, str]:
         self._ensure_exists(name)
         config = self._load_config(name)
         if chat_file:
-            chat_path = os.path.join(self.chats_dir(name), chat_file)
+            chat_file = self._normalize_chat_file(chat_file)
+            chat_path = self.chat_path(name, chat_file)
             if not os.path.isfile(chat_path):
                 raise SessionError(f"聊天文件 '{chat_file}' 不存在")
             return config, chat_file, chat_path
 
         chat_file = self._ensure_chat_target(name, "", None)
         config = self._load_config(name)
-        chat_path = os.path.join(self.chats_dir(name), chat_file)
+        chat_path = self.chat_path(name, chat_file)
         return config, chat_file, chat_path
 
     def _prepare_chat_turn(self, name: str, query: str, chat_file: str = None) -> tuple[dict, str, str, SimpleChatStore]:
@@ -573,7 +602,8 @@ class SessionManager:
             self._ensure_exists(name)
             config = self._load_config(name)
             if chat_file:
-                chat_path = os.path.join(self.chats_dir(name), chat_file)
+                chat_file = self._normalize_chat_file(chat_file)
+                chat_path = self.chat_path(name, chat_file)
                 if not os.path.isfile(chat_path):
                     raise SessionError(f"聊天文件 '{chat_file}' 不存在")
             else:
@@ -585,7 +615,7 @@ class SessionManager:
     def _create_chat_file_locked(self, name: str, config: dict) -> str:
         filename = self._gen_chat_filename(name)
         store = SimpleChatStore()
-        store.persist(os.path.join(self.chats_dir(name), filename))
+        store.persist(self.chat_path(name, filename))
         config["active_chat"] = filename
         self._save_config(name, config)
         return filename

@@ -1,12 +1,4 @@
-## ADDED Requirements
-
-### Requirement: API SHALL list all knowledge bases
-
-The system SHALL return a list of all knowledge bases via REST API.
-
-#### Scenario: GET /api/kb
-- **WHEN** client sends `GET /api/kb`
-- **THEN** response with 200 status and JSON array of KB names with file/folder counts
+## MODIFIED Requirements
 
 ### Requirement: API SHALL create a knowledge base
 
@@ -22,14 +14,6 @@ The system SHALL create a new knowledge base via REST API, and the provided know
 - **THEN** the API rejects the request
 - **THEN** no directory is created outside or inside the KB root for that invalid name
 
-### Requirement: API SHALL show KB details
-
-The system SHALL return a knowledge base's file list.
-
-#### Scenario: GET /api/kb/{name}
-- **WHEN** client sends `GET /api/kb/my-docs`
-- **THEN** response includes file list with names and sizes
-
 ### Requirement: API SHALL delete a knowledge base
 
 The system SHALL delete a knowledge base, and the requested knowledge base name SHALL resolve only within the configured KB root.
@@ -43,6 +27,8 @@ The system SHALL delete a knowledge base, and the requested knowledge base name 
 - **WHEN** client sends `DELETE /api/kb/{name}` using a knowledge base name with path traversal or absolute-path semantics
 - **THEN** the API rejects the request
 - **THEN** no directory outside the KB root is removed
+
+## ADDED Requirements
 
 ### Requirement: API SHALL upload files only within the target knowledge base root
 
@@ -60,11 +46,6 @@ The system SHALL store uploaded files only under the target knowledge base's fil
 - **THEN** if that leaf filename is invalid, the API rejects the file
 - **THEN** no file is written outside `kb/<name>/files/`
 
-#### Scenario: POST /api/kb/upload rejects Windows-illegal filename
-- **WHEN** client uploads a file whose leaf filename contains Windows-illegal characters (`<` `>` `:` `"` `|` `?` `*`)
-- **THEN** the API rejects the file with 400
-- **THEN** no file is written to disk
-
 ### Requirement: API SHALL upload-and-index files only within the target knowledge base root
 
 The system SHALL ensure the upload-and-index endpoint never creates directories or files outside the target knowledge base root. For Web uploads, the endpoint SHALL apply the same leaf-filename reduction and leaf-name validation rules as the plain upload endpoint.
@@ -80,11 +61,6 @@ The system SHALL ensure the upload-and-index endpoint never creates directories 
 - **THEN** if the resulting leaf filename is invalid, the API rejects the file
 - **THEN** no out-of-root directory or file is created
 
-#### Scenario: POST /api/kb/upload-and-index rejects Windows-illegal filename
-- **WHEN** client uploads a file whose leaf filename contains Windows-illegal characters (`<` `>` `:` `"` `|` `?` `*`)
-- **THEN** the API rejects the file with 400
-- **THEN** no file is written to disk
-
 ### Requirement: API SHALL delete files only within the target knowledge base root
 
 The system SHALL delete files from a knowledge base only when the requested filename resolves within that knowledge base's file root.
@@ -98,13 +74,3 @@ The system SHALL delete files from a knowledge base only when the requested file
 - **WHEN** client sends a filename that would resolve outside the target knowledge base root
 - **THEN** the API rejects the request
 - **THEN** no file outside that root is deleted
-
-### Requirement: Error handling SHALL catch OSError from filesystem operations
-
-The system SHALL catch `OSError` raised during file write operations (e.g., Windows rejecting a filename with illegal characters) and return a stable 400 error rather than propagating an unhandled 500.
-
-#### Scenario: OSError on file write returns 400
-- **WHEN** a write to the filesystem raises `OSError` (e.g., `[Errno 22] Invalid argument`)
-- **THEN** the API catches the exception
-- **THEN** the response is 400 with a descriptive error message
-- **THEN** the request does not result in a 500 Internal Server Error

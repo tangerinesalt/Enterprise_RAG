@@ -1,7 +1,9 @@
 ## Purpose
 
 Define the React session pages for listing sessions, binding knowledge bases, switching chats, and sending messages.
+
 ## Requirements
+
 ### Requirement: Session list page SHALL show all sessions
 
 The page SHALL display all sessions with bound KB info and create/delete.
@@ -16,7 +18,7 @@ The page SHALL display all sessions with bound KB info and create/delete.
 
 ### Requirement: Session chat page SHALL have two-column layout
 
-The left column SHALL show session info, KB binding, retrieval parameter editing area, and chat list. The right column SHALL show the locally selected chat's messages and input. The page SHALL keep the current selected `chat_file` in local page state instead of relying on a session-global authoritative active chat.
+The left column SHALL show session info, KB binding, retrieval parameter editing area, and chat list. The right column SHALL show the locally selected chat's messages and input.
 
 #### Scenario: View session chat
 - **WHEN** user clicks a session row
@@ -31,7 +33,7 @@ The left column SHALL show session info, KB binding, retrieval parameter editing
 - **THEN** the response is displayed in that same local chat view
 
 #### Scenario: New chat
-- **WHEN** user clicks "新聊天" button
+- **WHEN** user clicks "new chat" button
 - **THEN** a new chat file is created via `POST /api/session/new`
 - **THEN** the page locally selects the returned chat file
 - **THEN** a blank chat area appears on the right
@@ -49,40 +51,65 @@ The left column SHALL show session info, KB binding, retrieval parameter editing
 
 ### Requirement: User SHALL view and edit retrieval params in UI
 
-The left column SHALL display a "检索参数" section below the KB binding area, showing current `top_k` and `top_n` with inline editing.
+The left column SHALL display a "retrieval params" section below the KB binding area, showing current `top_k` and `top_n` with inline editing.
 
 #### Scenario: Display current params
 - **WHEN** user views the session chat page
-- **THEN** the left column shows a "检索参数" section with `top_k` and `top_n` values
+- **THEN** the left column shows a "retrieval params" section with `top_k` and `top_n` values
 - **THEN** the values are displayed in editable number input fields
 
 #### Scenario: Edit and save params
 - **WHEN** user changes `top_k` or `top_n` values and clicks a save button
 - **THEN** `PATCH /api/session/{name}/config` is called with the new values
-- **THEN** on success, the inputs show the saved values with a brief "已保存" confirmation
+- **THEN** on success, the inputs show the saved values with a brief "saved" confirmation
 - **THEN** on error, an error message is shown and inputs revert to previous values
 
 #### Scenario: Validate params on save
 - **WHEN** user enters 0 or negative values and clicks save
-- **THEN** the save is rejected with a validation message "top_k 必须 ≥ 1"
+- **THEN** the save is rejected with a validation message "top_k must be >= 1"
 - **THEN** the inputs are NOT sent to the API
 
 ### Requirement: Session chat page SHALL branch on structured stream errors
 
-The frontend SHALL handle streaming chat errors using structured error fields from the API instead of parsing free-form error text.
+The frontend SHALL handle streaming chat errors using structured error fields from the API.
 
 #### Scenario: KB error uses structured category
 - **WHEN** the stream returns an `error` event with `category = "kb"`
 - **THEN** the page shows the KB-specific warning flow
-- **THEN** the page does NOT need to infer that flow from Chinese text fragments
+- **THEN** the page does NOT need to infer that flow from text fragments
 
 #### Scenario: Model error uses structured category
 - **WHEN** the stream returns an `error` event with `category = "model"` or a model-related `code`
 - **THEN** the page shows the model-loading warning flow
-- **THEN** the page does NOT need to inspect provider names such as `Ollama` in the message text
 
 #### Scenario: Generic runtime error still shows message
 - **WHEN** the stream returns an `error` event with an unknown `code`
 - **THEN** the page still renders the returned `message` in the assistant placeholder
 - **THEN** the chat remains reloadable from persisted history
 
+### Requirement: Session chat history SHALL restore structured sources from persisted messages
+
+The session chat page SHALL rebuild assistant source panels from persisted structured message fields.
+
+#### Scenario: Reload history after streaming chat
+- **WHEN** user completes a streaming chat, refreshes the page, and reopens that chat history
+- **THEN** the assistant message is rendered from persisted message content
+- **THEN** the source panel is restored from persisted structured sources
+
+#### Scenario: Reload history after synchronous chat
+- **WHEN** user opens a chat whose assistant response was created through the non-streaming chat API after this change
+- **THEN** the page renders the assistant text
+- **THEN** the page restores the same structured source panel shape as for streaming chats
+
+### Requirement: Session chat page SHALL not depend on text parsing for source restoration
+
+The session chat page SHALL treat structured persisted source fields as the authoritative source of citation data.
+
+#### Scenario: Source restoration ignores markdown body parsing
+- **WHEN** an assistant message body contains formatted markdown or citation-like text
+- **THEN** the page still uses persisted structured source fields for the source panel
+
+#### Scenario: Legacy message without structured sources shows degraded history
+- **WHEN** the page loads a legacy assistant message that has no persisted structured source fields
+- **THEN** the page still renders the assistant body
+- **THEN** the page does NOT attempt to rebuild a source panel by parsing the body text

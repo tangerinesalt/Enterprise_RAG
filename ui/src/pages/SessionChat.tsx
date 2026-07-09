@@ -12,6 +12,23 @@ interface Message {
   sources?: { text: string; score: number }[];
 }
 
+function toHistoryMessage(message: {
+  role: string;
+  content: string;
+  additional_kwargs?: { sources?: { text: string; score: number }[] };
+}): Message {
+  const sources = Array.isArray(message.additional_kwargs?.sources)
+    ? message.additional_kwargs.sources
+    : undefined;
+
+  return {
+    role: message.role,
+    content: message.content,
+    // Structured persisted sources are authoritative; legacy inline text stays body-only.
+    sources,
+  };
+}
+
 export default function SessionChat() {
   const { name } = useParams<{ name: string }>();
   const [sessionInfo, setSessionInfo] = useState<SessionItem | null>(null);
@@ -56,11 +73,7 @@ export default function SessionChat() {
     // loading 时跳过：提交中会通过 onToken 填充消息，不要被空文件内容覆盖
     if (!name || !activeChat || loading) return;
     sessionApi.getMessages(name, activeChat)
-      .then(d => setMessages(d.messages.map(m => ({
-        role: m.role,
-        content: m.content,
-        sources: m.additional_kwargs?.sources || undefined,
-      }))))
+      .then(d => setMessages(d.messages.map(toHistoryMessage)))
       .catch(() => setMessages([]));
   }, [name, activeChat, loading]);
 

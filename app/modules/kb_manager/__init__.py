@@ -4,6 +4,6 @@
 - KnowledgeBaseError: 操作异常
 """
 
-from app.modules.kb_manager.knowledge_base import KnowledgeBase, KnowledgeBaseError
+from app.modules.kb_manager.knowledge_base import KnowledgeBase, KnowledgeBaseError, KnowledgeBasePathError
 
-__all__ = ["KnowledgeBase", "KnowledgeBaseError"]
+__all__ = ["KnowledgeBase", "KnowledgeBaseError", "KnowledgeBasePathError"]

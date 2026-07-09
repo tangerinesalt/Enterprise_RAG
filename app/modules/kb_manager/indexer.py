@@ -404,6 +404,7 @@ class Indexer:
         )
 
         _kb.set_file_status(kb_name, filename, "indexed", chunks=chunk_count)
+        _kb.bump_corpus_version(kb_name)
         return chunk_count
 
     # ── 流式索引（逐 chunk 报告进度）───────────
@@ -466,6 +467,7 @@ class Indexer:
 
         chunk_count = total
         _kb.set_file_status(kb_name, filename, "indexed", chunks=chunk_count)
+        _kb.bump_corpus_version(kb_name)
         yield {"type": "index_done", "file": filename, "chunks": chunk_count}
 
     def index_folder_stream(self, kb_name: str, folder_name: str):
@@ -532,6 +534,7 @@ class Indexer:
 
         if ids:
             collection.delete(ids=ids)
+            _kb.bump_corpus_version(kb_name)
 
         return len(ids)
 
