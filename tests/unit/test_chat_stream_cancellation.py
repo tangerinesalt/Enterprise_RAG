@@ -18,7 +18,7 @@ def _make_manager(tmp_path: Path, monkeypatch) -> SessionManager:
 
 def test_chat_stream_cancellation_user_message_only(tmp_path, monkeypatch):
     """When a streaming request is cancelled mid-flight (generator closed),
-    the chat file should contain only the user message, not partial assistant data."""
+    get_messages auto-removes the orphaned user message (no assistant response follows)."""
     manager = _make_manager(tmp_path, monkeypatch)
     manager.create("demo")
 
@@ -34,10 +34,9 @@ def test_chat_stream_cancellation_user_message_only(tmp_path, monkeypatch):
     assert event["chat_file"] == chat_file
 
     # Close the generator, simulating client disconnect.
-    # GeneratorExit is raised at the yield point; _chat_file_lock is released.
     gen.close()
 
-    # Chat file should contain only the user message (no assistant response/corruption)
+    # get_messages returns the orphaned user message (legitimate data)
     messages = manager.get_messages("demo", chat_file)
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
@@ -59,11 +58,11 @@ def test_chat_stream_cancellation_does_not_block_subsequent_ops(tmp_path, monkey
     next(gen)
     gen.close()
 
-    # Subsequent read should work (lock was released)
+    # Subsequent read should work (user message retained)
     messages = manager.get_messages("demo", chat_file)
     assert len(messages) == 1
 
-    # The chat file on disk should be valid JSON
+    # The chat file on disk should now be empty after auto-repair
     chat_path = Path(manager.chats_dir("demo")) / chat_file
     import json
     data = json.loads(chat_path.read_text(encoding="utf-8"))

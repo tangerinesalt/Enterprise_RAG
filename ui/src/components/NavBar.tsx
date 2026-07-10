@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import styles from './NavBar.module.css';
 
 const tabs = [
-  { path: '/kb', label: '📚 知识库' },
+  { path: '/kb', label: '📁 知识库' },
   { path: '/session', label: '💬 会话' },
 ];
 
@@ -13,6 +13,7 @@ export default function NavBar() {
 
   return (
     <nav className={styles.nav}>
+      <span className={styles.logo}>rag_v</span>
       {tabs.map(tab => (
         <button
           key={tab.path}

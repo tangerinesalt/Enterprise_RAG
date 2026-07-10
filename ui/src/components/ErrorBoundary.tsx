@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import styles from './ErrorBoundary.module.css';
 
 interface Props {
   children: ReactNode;
@@ -27,22 +28,15 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', minHeight: '60vh', gap: 16,
-          color: '#6b7280', padding: 24,
-        }}>
-          <div style={{ fontSize: 48 }}>⚠️</div>
-          <h2 style={{ margin: 0, color: '#1f2937', fontSize: 18 }}>页面出现异常</h2>
-          <p style={{ margin: 0, textAlign: 'center', maxWidth: 400, fontSize: 14 }}>
+        <div className={styles.container}>
+          <div className={styles.icon}>⚠️</div>
+          <h2 className={styles.heading}>页面出现异常</h2>
+          <p className={styles.message}>
             {this.state.error?.message || '发生了未知错误'}
           </p>
           <button
             onClick={() => window.location.reload()}
-            style={{
-              padding: '8px 24px', background: '#2563eb', color: '#fff',
-              border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14,
-            }}
+            className={styles.reloadBtn}
           >
             重新加载
           </button>

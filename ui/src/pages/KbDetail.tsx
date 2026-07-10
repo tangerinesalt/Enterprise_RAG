@@ -179,7 +179,7 @@ export default function KbDetail() {
   const indexedCount = files.filter(f => f.indexed === 'indexed' && !getProgress(f.name)).length;
 
   return (
-    <div>
+    <div className="page">
       <button onClick={() => navigate('/kb')} className={styles.backLink}>← 返回</button>
       <h2 className={styles.title}>📁 {name}</h2>
 

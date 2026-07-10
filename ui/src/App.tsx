@@ -12,7 +12,7 @@ function App() {
     <BrowserRouter>
       <ErrorBoundary>
         <NavBar />
-        <main style={{ padding: '16px', maxWidth: 1200, margin: '0 auto' }}>
+        <main className="app-main">
           <Routes>
             <Route path="/" element={<Navigate to="/kb" replace />} />
             <Route path="/kb" element={<KbList />} />

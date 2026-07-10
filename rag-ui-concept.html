@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG UI 概念设计预览</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<style>
+  /* ── 设计令牌（现代化版）── */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    /* 主色 - 保持原 blue 基调，增加辅助色 */
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-light: #eff6ff;
+    --primary-container: #dbeafe;
+    --on-primary: #fff;
+    --secondary: #7c3aed;
+    --secondary-light: #f5f3ff;
+    --tertiary: #0d9488;
+    --tertiary-light: #f0fdfa;
+    --error: #dc2626;
+
+    /* 中性色 */
+    --surface: #fff;
+    --surface-dim: #f8fafc;
+    --surface-variant: #f1f5f9;
+    --outline: #e2e8f0;
+    --outline-variant: #cbd5e1;
+
+    /* 文本 */
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+
+    /* 圆角 - M3 风格大圆角 */
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
+    --radius-full: 9999px;
+
+    /* 阴影 - 多层次 */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 5px 15px rgba(0,0,0,0.05);
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.05), 0 20px 40px rgba(0,0,0,0.08);
+    --shadow-xl: 0 20px 50px rgba(0,0,0,0.08);
+
+    /* 间距 */
+    --space-2xs: 4px;
+    --space-xs: 8px;
+    --space-sm: 12px;
+    --space-md: 16px;
+    --space-lg: 20px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+    --space-3xl: 40px;
+
+    /* 过渡 */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration-fast: 150ms;
+    --duration-normal: 250ms;
+    --duration-slow: 400ms;
+
+    /* 字体 */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* 导航栏 */
+    --nav-height: 56px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--surface-dim);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── 导航栏 ── */
+  .navbar {
+    height: var(--nav-height);
+    background: var(--surface);
+    border-bottom: 1px solid var(--outline);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-xl);
+    gap: var(--space-2xs);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .nav-logo {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--primary);
+    margin-right: var(--space-xl);
+    letter-spacing: -0.01em;
+  }
+
+  .nav-tab {
+    padding: 0 var(--space-md);
+    height: var(--nav-height);
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+    text-decoration: none;
+    position: relative;
+  }
+
+  .nav-tab:hover { color: var(--text-primary); }
+  .nav-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+
+  .nav-spacer { flex: 1; }
+
+  .nav-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+  }
+
+  /* ── 页面容器（三栏演示）── */
+  .page {
+    display: flex;
+    height: calc(100vh - var(--nav-height));
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+
+  /* ── 左栏 ── */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--outline);
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    overflow-y: auto;
+  }
+
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs) 0;
+  }
+
+  .session-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .kb-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    font-size: 12px;
+    padding: var(--space-2xs) var(--space-sm);
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: var(--radius-full);
+    font-weight: 500;
+  }
+
+  /* ── 卡片 ── */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--outline);
+    padding: var(--space-md);
+    transition: box-shadow var(--duration-normal) var(--ease-out),
+                transform var(--duration-normal) var(--ease-out);
+  }
+
+  .card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+  }
+
+  .card-header-btn {
+    font-size: 11px;
+    color: var(--primary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    font-family: inherit;
+    font-weight: 500;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .card-header-btn:hover { background: var(--primary-light); }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── 知识库选择器 ── */
+  .kb-selector {
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm) var(--space-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+    background: var(--surface);
+  }
+  .kb-selector:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-container);
+  }
+  .kb-selector-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-light);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .kb-selector-info { flex: 1; min-width: 0; }
+  .kb-selector-name { font-size: 13px; font-weight: 500; }
+  .kb-selector-hint { font-size: 11px; color: var(--text-muted); }
+  .kb-selector-arrow { font-size: 16px; color: var(--text-muted); }
+
+  .kb-dropdown {
+    margin-top: 2px;
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+  }
+  .kb-dropdown-item {
+    padding: var(--space-sm) var(--space-md);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .kb-dropdown-item:hover { background: var(--surface-variant); }
+  .kb-dropdown-item.active { background: var(--primary-light); color: var(--primary); font-weight: 500; }
+
+  /* ── 参数行 ── */
+  .param-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs) 0;
+  }
+
+  .param-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .param-input {
+    width: 64px;
+    padding: var(--space-2xs) var(--space-sm);
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+    background: var(--surface-dim);
+    transition: border-color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  .param-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-container);
+  }
+
+  .param-input[type=range] {
+    width: 100px;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--outline);
+    border: none;
+    padding: 0;
+  }
+
+  .param-input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+  }
+
+  /* ── 按钮 ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-md);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .btn:active { transform: scale(0.97); }
+
+  .btn-filled {
+    background: var(--primary);
+    color: var(--on-primary);
+    box-shadow: var(--shadow-xs);
+  }
+  .btn-filled:hover {
+    background: var(--primary-hover);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-tonal {
+    background: var(--primary-light);
+    color: var(--primary);
+  }
+  .btn-tonal:hover { background: var(--primary-container); }
+
+  .btn-text {
+    background: transparent;
+    color: var(--primary);
+    padding: var(--space-xs) var(--space-sm);
+  }
+  .btn-text:hover { background: var(--primary-light); }
+
+  .btn-outlined {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--outline);
+  }
+  .btn-outlined:hover {
+    border-color: var(--outline-variant);
+    background: var(--surface-variant);
+  }
+
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .btn-icon:hover { background: var(--surface-variant); }
+
+  .btn-full {
+    width: 100%;
+    padding: var(--space-sm);
+    border-radius: var(--radius-sm);
+  }
+
+  /* ── 聊天列表 ── */
+  .chat-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    overflow-y: auto;
+  }
+
+  .chat-section-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: var(--space-sm) var(--space-xs) var(--space-2xs);
+  }
+
+  .chat-item {
+    display: flex;
+    align-items: center;
+    padding: var(--space-sm) var(--space-sm);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+    gap: var(--space-sm);
+  }
+
+  .chat-item:hover { background: var(--surface-variant); }
+  .chat-item.active {
+    background: var(--primary-light);
+    font-weight: 500;
+  }
+
+  .chat-item-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .chat-item.active .chat-item-icon {
+    background: var(--primary-container);
+  }
+
+  .chat-item-name {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-item-delete {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+  }
+
+  .chat-item:hover .chat-item-delete { opacity: 1; }
+  .chat-item-delete:hover {
+    background: rgba(220, 38, 38, 0.1);
+    color: var(--error);
+  }
+
+  /* ── 主聊天区域 ── */
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    min-width: 0;
+  }
+
+  .chat-header {
+    padding: var(--space-md) var(--space-xl);
+    border-bottom: 1px solid var(--outline);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .chat-header-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .chat-header-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ── 消息流 ── */
+  .message-flow {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-width: 780px;
+  }
+
+  .message.user { align-self: flex-end; }
+  .message.assistant { align-self: flex-start; }
+
+  .message-sender {
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+  }
+
+  .message.user .message-sender { color: var(--text-secondary); justify-content: flex-end; }
+  .message.assistant .message-sender { color: var(--primary); }
+
+  .message-bubble {
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-xl);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .message.user .message-bubble {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-bottom-right-radius: var(--radius-sm);
+  }
+
+  .message.assistant .message-bubble {
+    background: var(--surface-dim);
+    border: 1px solid var(--outline);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .message-bubble code {
+    background: rgba(0,0,0,0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: var(--font-mono);
+  }
+
+  .message.user .message-bubble code {
+    background: rgba(255,255,255,0.2);
+  }
+
+  .ref-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--primary-container);
+    color: var(--primary);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    vertical-align: super;
+    transition: background var(--duration-fast) var(--ease-out);
+    text-decoration: none;
+  }
+
+  .ref-link:hover { background: var(--primary); color: var(--on-primary); }
+
+  /* ── 来源 ── */
+  .sources-section {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--outline);
+  }
+
+  .sources-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-xs);
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+
+  .sources-title:hover {
+    background: var(--surface-variant);
+  }
+
+  .source-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    margin-bottom: var(--space-2xs);
+    background: var(--surface-dim);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .source-item:hover {
+    background: var(--surface);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .src-score {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    white-space: nowrap;
+    margin-top: 2px;
+    min-width: 38px;
+    text-align: center;
+  }
+
+  .src-text {
+    flex: 1;
+    color: var(--text-secondary);
+  }
+
+  .source-expand-icon {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform var(--duration-fast) var(--ease-out);
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .source-expand-icon.open { transform: rotate(90deg); }
+
+  /* ── 输入框 ── */
+  .input-area {
+    padding: var(--space-md) var(--space-xl);
+    border-top: 1px solid var(--outline);
+    background: var(--surface);
+  }
+
+  .input-container {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: flex-end;
+    background: var(--surface-dim);
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2xs) var(--space-2xs) var(--space-2xs) var(--space-md);
+    transition: border-color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  .input-container:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-container);
+  }
+
+  .input-field {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: var(--space-sm) 0;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    resize: none;
+    min-height: 24px;
+    max-height: 120px;
+    line-height: 1.5;
+  }
+
+  .input-field:focus { outline: none; }
+  .input-field::placeholder { color: var(--text-muted); }
+
+  .input-actions {
+    display: flex;
+    gap: var(--space-2xs);
+    align-items: center;
+  }
+
+  .btn-send {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-full);
+    border: none;
+    background: var(--primary);
+    color: var(--on-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration-fast) var(--ease-out);
+    flex-shrink: 0;
+  }
+
+  .btn-send:hover { background: var(--primary-hover); transform: scale(1.05); }
+  .btn-send:active { transform: scale(0.95); }
+  .btn-send:disabled { background: var(--outline-variant); cursor: not-allowed; }
+
+  .btn-send svg { width: 18px; height: 18px; }
+
+  /* ── 模式切换开关 ── */
+  .demo-toggle {
+    position: fixed;
+    bottom: var(--space-lg);
+    right: var(--space-lg);
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-full);
+    padding: var(--space-xs) var(--space-md);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .toggle-switch {
+    width: 40px;
+    height: 22px;
+    background: var(--outline-variant);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    position: relative;
+    transition: background var(--duration-normal) var(--ease-out);
+    border: none;
+    padding: 0;
+  }
+
+  .toggle-switch.active { background: var(--primary); }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform var(--duration-normal) var(--ease-out);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  }
+
+  .toggle-switch.active::after { transform: translateX(18px); }
+
+  /* ── 右栏（文档预览） ── */
+  .preview-panel {
+    width: 0;
+    overflow: hidden;
+    background: var(--surface);
+    border-left: 1px solid var(--outline);
+    transition: all var(--duration-normal) var(--ease-out);
+  }
+
+  .preview-panel.open {
+    width: 360px;
+    min-width: 360px;
+  }
+
+  .preview-header {
+    padding: var(--space-md);
+    border-bottom: 1px solid var(--outline);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .preview-body {
+    padding: var(--space-md);
+    overflow-y: auto;
+    height: calc(100% - 54px);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+
+  .preview-body h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+  }
+
+  .preview-body p {
+    margin-bottom: var(--space-md);
+  }
+
+  .preview-body code {
+    background: var(--surface-dim);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  /* ── 对比标签 ── */
+  .demo-label {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  .demo-label.current {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+  }
+
+  .demo-label.modern {
+    background: var(--primary-light);
+    color: var(--primary);
+    border: 1px solid var(--primary-container);
+  }
+
+  /* ── 对比区域布局 ── */
+  .demo-split {
+    display: flex;
+    height: 100%;
+    width: 100%;
+  }
+
+  .demo-half {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .demo-half + .demo-half {
+    border-left: 2px dashed var(--outline);
+  }
+
+  .demo-half-inner {
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--outline); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--outline-variant); }
+</style>
+</head>
+<body>
+
+<!-- 对比切换控件 -->
+<div class="demo-toggle">
+  <span id="toggleLabel">并排对比</span>
+  <button class="toggle-switch active" id="viewToggle" onclick="toggleView()"></button>
+</div>
+
+<!-- 导航栏 -->
+<nav class="navbar">
+  <span class="nav-logo">rag_v</span>
+  <a class="nav-tab active">📁 知识库</a>
+  <a class="nav-tab">💬 对话</a>
+  <div class="nav-spacer"></div>
+  <div class="nav-status">
+    <span class="status-dot"></span>
+    就绪
+  </div>
+</nav>
+
+<div class="page" id="pageContainer">
+
+  <!-- 左侧：同一个侧栏 -->
+  <aside class="sidebar">
+    <!-- 知识库绑定 -->
+    <div id="kbContainer">
+      <div class="kb-selector" onclick="toggleKbDropdown()">
+        <div class="kb-selector-icon">📚</div>
+        <div class="kb-selector-info">
+          <div class="kb-selector-name">rag-docs</div>
+          <div class="kb-selector-hint">知识库 · 24 个文件 · 已索引</div>
+        </div>
+        <span class="kb-selector-arrow">▾</span>
+      </div>
+      <div class="kb-dropdown" id="kbDropdown" style="display:none">
+        <div class="kb-dropdown-item active">📚 rag-docs</div>
+        <div class="kb-dropdown-item">📁 personal-notes</div>
+        <div class="kb-dropdown-item">📁 engineering-handbook</div>
+        <div class="kb-dropdown-item" style="color:var(--primary); border-top:1px solid var(--outline);">＋ 创建新知识库</div>
+      </div>
+    </div>
+
+    <!-- 检索参数 + 提示词合并 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">⚙️ 检索参数</span>
+        <button class="card-header-btn">重置</button>
+      </div>
+      <div class="param-row">
+        <span class="param-label">Top-K（初召）</span>
+        <input class="param-input" type="number" value="8" min="1" max="20" />
+      </div>
+      <div class="param-row">
+        <span class="param-label">Top-N（重排）</span>
+        <input class="param-input" type="number" value="5" min="1" max="10" />
+      </div>
+      <div class="param-row">
+        <span class="param-label">相似度阈值</span>
+        <input class="param-input" type="number" value="0.3" min="0" max="1" step="0.1" style="width:64px" />
+      </div>
+      <div style="margin: var(--space-sm) 0 var(--space-xs); border-top:1px solid var(--outline); padding-top:var(--space-sm);">
+        <label style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:6px;">📝 系统提示词</label>
+        <textarea style="width:100%; min-height:52px; text-align:left; resize:vertical; padding:6px 10px; border:1px solid var(--outline); border-radius:var(--radius-sm); font-size:12px; font-family:inherit; background:var(--surface-dim); color:var(--text-primary);" placeholder="System prompt...">你是 RAG 助手，基于知识库回答。请用中文回答，并在答案中标注来源。</textarea>
+      </div>
+      <div>
+        <button class="btn btn-filled btn-full">💾 保存全部配置</button>
+      </div>
+    </div>
+
+    <!-- 会话列表 -->
+    <div class="chat-section">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding: 0 var(--space-xs);">
+        <span class="chat-section-header">💬 历史对话</span>
+        <button class="btn btn-icon" title="新建对话">＋</button>
+      </div>
+      <div class="chat-item active">
+        <div class="chat-item-icon">💡</div>
+        <span class="chat-item-name">RAG 架构设计讨论</span>
+        <button class="chat-item-delete">✕</button>
+      </div>
+      <div class="chat-item">
+        <div class="chat-item-icon">🔍</div>
+        <span class="chat-item-name">检索参数调优记录</span>
+        <button class="chat-item-delete">✕</button>
+      </div>
+      <div class="chat-item">
+        <div class="chat-item-icon">📄</div>
+        <span class="chat-item-name">PDF 解析方案评估</span>
+        <button class="chat-item-delete">✕</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 右侧：对比区域 -->
+  <main class="chat-main" id="mainContent">
+    <!-- 内容由 JS 动态渲染 -->
+  </main>
+</div>
+
+<script>
+  let showComparison = true;
+
+  function renderCurrent() {
+    return `
+      <div class="demo-label current">当前样式</div>
+      <div style="height:100%; display:flex; flex-direction:column;">
+        <!-- 简陋的 header -->
+        <div style="padding:12px 16px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:13px; font-weight:600; color:#1f2937;">对话: RAG 架构设计</span>
+          <span style="font-size:11px; color:#9ca3af;">3 条消息</span>
+        </div>
+
+        <!-- 消息流 - 当前样式 -->
+        <div style="flex:1; overflow-y:auto; padding:16px;">
+          <div style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600; color:#2563eb;">你</span>
+            </div>
+            <div style="padding:10px 16px; background:#2563eb; color:#fff; border-radius:8px; font-size:13px; line-height:1.6; max-width:720px; margin-left:auto;">
+              RAG 系统的核心架构是什么？
+            </div>
+          </div>
+
+          <div style="margin-bottom:20px;">
+            <div style="margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600; color:#059669;">助手</span>
+            </div>
+            <div style="padding:10px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; font-size:13px; line-height:1.6; max-width:720px;">
+              RAG（检索增强生成）系统由三个核心阶段构成：检索、增强和生成。检索阶段通过向量相似度从知识库中召回相关文档片段；增强阶段将检索结果与原始查询拼接；生成阶段由 LLM 输出答案。
+            </div>
+            <!-- 当前来源折叠 -->
+            <div style="margin-top:12px; font-size:12px; color:#6b7280;">
+              <details>
+                <summary style="cursor:pointer; user-select:none; color:#2563eb;">ℹ️ 来源 (3)</summary>
+                <div style="margin-top:8px; padding:8px; background:#f9fafb; border-radius:4px; border:1px solid #e5e7eb;">
+                  <div style="font-size:11px; color:#9ca3af; margin-bottom:4px;">score: 0.92</div>
+                  <div style="font-size:12px;">RAG 包括检索、增强、生成三个阶段</div>
+                </div>
+                <div style="margin-top:4px; padding:8px; background:#f9fafb; border-radius:4px; border:1px solid #e5e7eb;">
+                  <div style="font-size:11px; color:#9ca3af; margin-bottom:4px;">score: 0.85</div>
+                  <div style="font-size:12px;">向量检索使用 bge-m3 模型进行 embedding</div>
+                </div>
+                <div style="margin-top:4px; padding:8px; background:#f9fafb; border-radius:4px; border:1px solid #e5e7eb;">
+                  <div style="font-size:11px; color:#9ca3af; margin-bottom:4px;">score: 0.78</div>
+                  <div style="font-size:12px;">重排序阶段使用 bge-reranker-v2-m3</div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <!-- 输入框 - 当前 -->
+        <div style="padding:12px 16px; border-top:1px solid #e5e7eb;">
+          <div style="display:flex; gap:8px;">
+            <input style="flex:1; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; font-family:inherit;" placeholder="输入消息..." />
+            <button style="padding:8px 16px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px;">发送</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderModern() {
+    return `
+      <div class="demo-label modern">现代化设计</div>
+      <div style="height:100%; display:flex; flex-direction:column;">
+        <!-- 聊天头部 -->
+        <div style="padding:16px 24px; border-bottom:1px solid var(--outline); display:flex; align-items:center; gap:12px; background:var(--surface);">
+          <div style="background:var(--surface-dim); width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px;">💡</div>
+          <div>
+            <div style="font-size:14px; font-weight:600; color:var(--text-primary);">RAG 架构设计</div>
+            <div style="font-size:12px; color:var(--text-muted);">绑定: rag-docs · 3 条消息</div>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:4px;">
+            <button class="btn btn-icon" title="查看检索详情">🔍</button>
+            <button class="btn btn-icon" title="更多">⋯</button>
+          </div>
+        </div>
+
+        <!-- 消息流 -->
+        <div class="message-flow">
+          <!-- 用户消息 -->
+          <div class="message user">
+            <div class="message-sender">你</div>
+            <div class="message-bubble">
+              RAG 系统的核心架构是什么？
+            </div>
+          </div>
+
+          <!-- 助手消息 -->
+          <div class="message assistant">
+            <div class="message-sender">🤖 助手</div>
+            <div class="message-bubble">
+              <p style="margin-bottom:8px;">
+                RAG（检索增强生成）系统由三个核心阶段构成<a class="ref-link" href="#">1</a>：检索、增强和生成。
+              </p>
+              <p style="margin-bottom:8px;">
+                第一阶段是<b>检索</b>——系统接收用户查询后，通过向量相似度从知识库中召回最相关的文档片段<a class="ref-link" href="#">2</a>。采用 bge-m3 模型进行 embedding，支持多语言语义匹配。
+              </p>
+              <p>
+                第二阶段是<b>增强</b>——将检索结果与原始查询拼接。第三阶段由 LLM 基于增强后的上下文生成答案，同时经过<b>重排序</b>优化<a class="ref-link" href="#">3</a>，确保最相关的内容优先进入 LLM 上下文窗口。
+              </p>
+
+              <!-- 来源（整体折叠） -->
+              <div class="sources-section">
+                <div class="sources-title" onclick="toggleSources(this)" style="cursor:pointer; user-select:none;">
+                  <span class="source-expand-icon" id="srcArrow">▸</span>
+                  <span>📎 来源 (3 条)</span>
+                </div>
+                <div id="srcBody" style="display:none">
+                  <div class="source-item">
+                    <span class="src-score">0.94</span>
+                    <span class="src-text">RAG 包括检索、增强、生成三个阶段，各自独立但又紧密耦合</span>
+                  </div>
+                  <div class="source-item">
+                    <span class="src-score">0.87</span>
+                    <span class="src-text">向量检索使用 bge-m3 模型进行 embedding，支持 100+ 语言</span>
+                  </div>
+                  <div class="source-item">
+                    <span class="src-score">0.78</span>
+                    <span class="src-text">重排序阶段使用 bge-reranker-v2-m3，优化相关性排序</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 现代化输入框 -->
+        <div class="input-area">
+          <div class="input-container">
+            <textarea class="input-field" placeholder="输入问题..." rows="1">检索增强生成的全过程是什么样的？</textarea>
+            <div class="input-actions">
+              <button class="btn btn-icon" title="上传文件" style="width:32px; height:32px;">📎</button>
+              <button class="btn-send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function toggleView() {
+    showComparison = !showComparison;
+    document.getElementById('viewToggle').classList.toggle('active', showComparison);
+    document.getElementById('toggleLabel').textContent = showComparison ? '并排对比' : '仅新设计';
+    renderPage();
+  }
+
+  function renderPage() {
+    const container = document.getElementById('mainContent');
+    if (showComparison) {
+      container.innerHTML = `
+        <div class="demo-split">
+          <div class="demo-half">
+            <div class="demo-half-inner">${renderCurrent()}</div>
+          </div>
+          <div class="demo-half">
+            <div class="demo-half-inner">${renderModern()}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `<div style="height:100%;">${renderModern()}</div>`;
+    }
+  }
+
+  function toggleKbDropdown() {
+    const dd = document.getElementById('kbDropdown');
+    dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function toggleSources(titleEl) {
+    const body = document.getElementById('srcBody');
+    const arrow = document.getElementById('srcArrow');
+    if (!body) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.classList.toggle('open', !isOpen);
+  }
+
+  // 点击 dropdown 外部关闭
+  document.addEventListener('click', function(e) {
+    const container = document.getElementById('kbContainer');
+    const dd = document.getElementById('kbDropdown');
+    if (container && dd && !container.contains(e.target)) {
+      dd.style.display = 'none';
+    }
+  });
+
+  renderPage();
+</script>
+
+</body>
+</html>

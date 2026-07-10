@@ -69,7 +69,7 @@ export default function ChatArea({
           <div className={styles.activeChatLabel}>{activeChat}</div>
           <div className={styles.messageList}>
             {messages.map((msg, i) => (
-              <div key={i} className={styles.message}>
+              <div key={i} className={`${styles.message} ${msg.role === 'user' ? styles.messageUser : styles.messageAssistant}`}>
                 <div className={`${styles.roleLabel} ${msg.role === 'user' ? styles.roleUser : styles.roleAssistant}`}>
                   {msg.role === 'user' ? '👤 用户' : '🤖 助手'}
                 </div>
@@ -77,22 +77,7 @@ export default function ChatArea({
                   <div className={styles.userContent}>{msg.content}</div>
                 ) : (
                   <div className={styles.assistantContent}>
-                    <MarkdownMessage content={msg.content} />
-                    {msg.sources && msg.sources.length > 0 && (
-                      <details className={styles.sourcesDetails}>
-                        <summary className={styles.sourcesSummary}>
-                          📎 来源 ({msg.sources.length})
-                        </summary>
-                        {msg.sources.map((s, i) => (
-                          <div key={i} className={styles.sourceItem}>
-                            <div className={styles.sourceScore}>
-                              相关度: {s.score ?? 'N/A'}
-                            </div>
-                            <div>{s.text}</div>
-                          </div>
-                        ))}
-                      </details>
-                    )}
+                    <MarkdownMessage content={msg.content} sources={msg.sources} />
                   </div>
                 )}
               </div>

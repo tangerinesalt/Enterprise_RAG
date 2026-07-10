@@ -4,14 +4,42 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #1f2937;
-  background: #fff;
+  font-family: var(--md-font-sans);
+  font-size: var(--md-font-size-md);
+  line-height: 1.6;
+  color: var(--md-text-primary);
+  background: var(--md-surface-dim);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root { min-height: 100vh; }
 
-a { color: #2563eb; text-decoration: none; }
+a {
+  color: var(--md-primary);
+  text-decoration: none;
+}
 a:hover { text-decoration: underline; }
+
+/* 全局焦点环 */
+*:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+/* 主内容区域布局（App.tsx <main>） */
+/* padding 由各页面自行控制（SessionChat 需要撑满，列表页需要 padding） */
+.app-main {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* 列表页通用容器 */
+.page {
+  padding: var(--md-space-xl);
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--md-outline); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--md-outline-variant); }

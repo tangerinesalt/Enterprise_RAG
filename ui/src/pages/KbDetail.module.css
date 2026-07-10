@@ -1,233 +1,234 @@
 @import '../styles/tokens.css';
 
+/* ── 返回按钮 ── */
 .backLink {
   background: none;
   border: none;
-  color: var(--color-text-link);
+  color: var(--md-primary);
   cursor: pointer;
-  padding: 0;
-  font-size: var(--font-size-md);
+  padding: 4px 0;
+  font-size: var(--md-font-size-base);
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--md-radius-xs);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
 }
-
-.backLink:hover {
-  text-decoration: underline;
-}
+.backLink:hover { background: var(--md-primary-container); }
 
 .title {
-  margin: var(--space-sm) 0 var(--space-lg);
-  font-size: var(--font-size-xl);
+  margin: var(--md-space-sm) 0 var(--md-space-lg);
+  font-size: var(--md-font-size-xl);
+  font-weight: 600;
+  color: var(--md-text-primary);
 }
 
 .actions {
   display: flex;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
+  gap: var(--md-space-sm);
+  margin-bottom: var(--md-space-lg);
 }
 
 .fileList {
   list-style: none;
   padding: 0;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-xs);
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-md);
-  border-bottom: 1px solid #f3f4f6;
-  transition: background 0.15s;
+  gap: var(--md-space-md);
+  padding: var(--md-space-sm) var(--md-space-md);
+  border-radius: var(--md-radius-lg);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  transition: box-shadow var(--md-duration-fast) var(--md-ease-out),
+              border-color var(--md-duration-fast) var(--md-ease-out);
+}
+.row:hover {
+  box-shadow: var(--md-shadow-sm);
+  border-color: var(--md-outline-variant);
 }
 
-.row:hover {
-  background: var(--color-bg-hover);
-}
+.rowInfo { flex: 1; min-width: 0; }
 
 .rowName {
-  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--md-space-sm);
 }
 
 .rowSize {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-base);
+  color: var(--md-text-muted);
+  font-size: var(--md-font-size-xs);
 }
 
 .rowActions {
   display: flex;
   gap: 6px;
+  align-items: center;
 }
 
 .empty {
-  color: var(--color-text-muted);
+  color: var(--md-text-muted);
+  text-align: center;
+  padding: var(--md-space-2xl);
+  font-size: var(--md-font-size-md);
 }
 
+/* ── 按钮 ── */
 .btnPrimary {
-  padding: 6px 14px;
-  background: var(--color-primary);
-  color: #fff;
+  height: var(--md-btn-height);
+  padding: 0 16px;
+  background: var(--md-btn-fill-bg);
+  color: var(--md-btn-fill-color);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--md-btn-radius);
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: var(--md-btn-font-size);
+  font-weight: var(--md-btn-font-weight);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
 }
-
-.btnPrimary:hover {
-  background: var(--color-primary-hover);
-}
-
-.btnPrimary:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
+.btnPrimary:hover { background: var(--md-btn-fill-hover); }
+.btnPrimary:focus-visible { outline-offset: 2px; }
 
 .btnSec {
-  padding: 6px 14px;
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  height: var(--md-btn-height);
+  padding: 0 16px;
+  background: var(--md-surface-variant);
+  color: var(--md-text-primary);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--md-btn-radius);
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: var(--md-btn-font-size);
+  font-weight: var(--md-btn-font-weight);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
 }
-
-.btnSec:hover {
-  background: var(--color-border-light);
-}
+.btnSec:hover { background: var(--md-outline); }
 
 .btnSmall {
-  padding: 2px 10px;
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  height: 30px;
+  padding: 0 12px;
+  background: var(--md-surface-variant);
+  color: var(--md-text-primary);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--md-radius-sm);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--md-font-size-sm);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
 }
-
-.btnSmall:hover {
-  background: var(--color-border-light);
-}
+.btnSmall:hover { background: var(--md-outline); }
 
 .btnSmallDanger {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 2px 6px;
-  font-size: var(--font-size-md);
-  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: var(--md-font-size-md);
+  border-radius: var(--md-radius-xs);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+  opacity: 0.6;
+}
+.btnSmallDanger:hover { background: var(--md-error-container); opacity: 1; }
+
+.btnDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btnDisabled:hover { background: var(--md-surface-variant); }
+
+/* ── 索引按钮三态 ── */
+.btnIndexing {
+  height: 30px;
+  padding: 0 12px;
+  background: var(--md-surface-variant);
+  color: var(--md-text-muted);
+  border: none;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-sm);
+  cursor: not-allowed;
+  font-family: inherit;
 }
 
-.btnSmallDanger:hover {
-  background: var(--color-bg-hover);
+.btnIndexed {
+  height: 30px;
+  padding: 0 12px;
+  background: var(--md-success-container);
+  color: var(--md-success);
+  border: none;
+  border-radius: var(--md-radius-sm);
+  cursor: pointer;
+  font-size: var(--md-font-size-sm);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
 }
+.btnIndexed:hover { background: #bbf7d0; }
+
+.btnRefresh {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: var(--md-font-size-md);
+  border-radius: var(--md-radius-xs);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+}
+.btnRefresh:hover { background: var(--md-surface-variant); }
 
 /* ── 进度条 ── */
-.rowInfo {
-  flex: 1;
-  min-width: 0;
-}
-
-.rowName {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-sm);
-}
-
 .progressContainer {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--md-space-sm);
   margin-top: 4px;
 }
 
 .progressBar {
   width: 120px;
   height: 6px;
-  background: #e5e7eb;
+  background: var(--md-outline);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  background: #22c55e;
+  background: var(--md-success);
   border-radius: 3px;
-  transition: width 0.3s ease;
+  transition: width 300ms var(--md-ease-out);
   min-width: 0;
 }
 
 .progressFillFull {
   height: 100%;
   width: 100%;
-  background: #22c55e;
+  background: var(--md-success);
   border-radius: 3px;
 }
 
 .progressText {
-  font-size: 11px;
-  color: var(--color-text-muted);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-text-muted);
   font-style: italic;
 }
 
 .progressDone {
-  font-size: 11px;
-  color: var(--color-success);
-}
-
-/* ── 索引按钮三态 ── */
-.btnIndexing {
-  padding: 2px 10px;
-  background: #d1d5db;
-  color: #9ca3af;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  cursor: not-allowed;
-}
-
-.btnIndexed {
-  padding: 2px 10px;
-  background: #dcfce7;
-  color: #16a34a;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-}
-
-.btnIndexed:hover {
-  background: #bbf7d0;
-}
-
-.btnDisabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btnDisabled:hover {
-  background: var(--color-bg-hover);
-}
-
-/* ── 重新索引刷新按钮 ── */
-.btnRefresh {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px 6px;
-  font-size: var(--font-size-md);
-  border-radius: var(--radius-sm);
-  line-height: 1;
-}
-
-.btnRefresh:hover {
-  background: var(--color-bg-hover);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-success);
 }
 
 /* ── 汇总 ── */
 .summary {
-  margin-top: var(--space-lg);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  margin-top: var(--md-space-lg);
+  font-size: var(--md-font-size-sm);
+  color: var(--md-text-muted);
   text-align: center;
 }

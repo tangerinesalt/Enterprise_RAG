@@ -1,36 +1,84 @@
 @import '../styles/tokens.css';
 
+/* ═══════════════════════════════════════════════════════
+   Session Chat 页面样式
+   所有子组件（Sidebar / ParameterPanel / ChatList /
+   ChatArea / ChatInput）均从此文件导入 class
+   ═══════════════════════════════════════════════════════ */
+
+/* ── 双栏布局 ── */
 .wrapper {
   display: flex;
   gap: 0;
-  height: calc(100vh - 80px);
+  height: calc(100vh - var(--md-nav-height));
+  overflow: hidden;
 }
 
-/* ------- 左栏 ------- */
+/* ──────────────────────────────────────────────────────
+   左栏 - Sidebar
+   ────────────────────────────────────────────────────── */
 .sidebar {
-  width: 260px;
-  min-width: 260px;
-  border-right: 1px solid var(--color-border-light);
-  padding: var(--space-md);
+  width: 280px;
+  min-width: 280px;
+  background: var(--md-surface);
+  border-right: 1px solid var(--md-outline);
+  padding: var(--md-space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-md);
   overflow-y: auto;
 }
 
+.btnBack {
+  background: none;
+  border: none;
+  color: var(--md-primary);
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: var(--md-font-size-base);
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--md-radius-xs);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+}
+.btnBack:hover { background: var(--md-primary-container); }
+
 .sessionTitle {
-  margin: var(--space-sm) 0;
-  font-size: var(--font-size-md);
-  color: var(--color-text);
+  margin: 0;
+  font-size: var(--md-font-size-lg);
+  font-weight: 600;
+  color: var(--md-text-primary);
 }
 
 .kbLabel {
-  font-size: var(--font-size-base);
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-sm);
+  font-size: var(--md-font-size-base);
+  color: var(--md-text-secondary);
 }
 
-/* 参数面板 */
+/* ── 知识库绑定列表 ── */
+.bindList { margin: var(--md-space-xs) 0; }
+
+.bindItem {
+  padding: var(--md-space-xs) var(--md-space-sm);
+  cursor: pointer;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-base);
+  color: var(--md-text-secondary);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+}
+.bindItem:hover { background: var(--md-surface-variant); }
+
+/* ──────────────────────────────────────────────────────
+   参数面板（ParameterPanel）
+   ────────────────────────────────────────────────────── */
 .paramsSection {
-  margin-top: var(--space-md);
-  border-top: 1px solid var(--color-border-light);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-space-md);
+  background: var(--md-surface);
+  box-shadow: var(--md-shadow-xs);
 }
 
 .paramsToggle {
@@ -38,149 +86,161 @@
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  padding: var(--space-sm) 0;
   user-select: none;
 }
-
-.paramsToggle:hover {
-  color: var(--color-primary);
-}
-
 .paramsToggleLabel {
-  font-size: var(--font-size-sm);
+  font-size: var(--md-font-size-sm);
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--md-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
-
 .paramsToggleArrow {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  font-size: var(--md-font-size-sm);
+  color: var(--md-text-muted);
 }
 
 .paramsBody {
-  padding-bottom: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-xs);
+  padding-top: var(--md-space-sm);
 }
 
 .paramRow {
   display: flex;
-  gap: 6px;
   align-items: center;
-  margin-bottom: var(--space-xs);
+  gap: var(--md-space-xs);
 }
 
 .paramLabel {
-  font-size: var(--font-size-base);
-  color: var(--color-text-secondary);
-  min-width: 48px;
+  font-size: var(--md-font-size-base);
+  color: var(--md-text-secondary);
+  min-width: 56px;
 }
 
 .paramInput {
-  width: 60px;
-  padding: var(--space-2xs) 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
+  width: 72px;
+  padding: var(--md-space-2xs) var(--md-space-sm);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-base);
+  font-family: inherit;
+  background: var(--md-surface-dim);
+  text-align: center;
+  transition: border-color var(--md-duration-fast) var(--md-ease-out),
+              box-shadow var(--md-duration-fast) var(--md-ease-out);
 }
-
 .paramInput:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -1px;
-  border-color: transparent;
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px var(--md-primary-container);
 }
 
 .paramHint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-text-muted);
 }
 
+/* 提示词区域 */
 .promptSection {
-  margin-top: var(--space-sm);
+  margin-top: var(--md-space-xs);
+  padding-top: var(--md-space-sm);
+  border-top: 1px solid var(--md-outline);
 }
 
 .promptLabel {
-  font-size: var(--font-size-sm);
+  font-size: var(--md-font-size-sm);
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--md-text-muted);
   display: block;
-  margin-bottom: var(--space-xs);
+  margin-bottom: var(--md-space-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .promptTextarea {
   width: 100%;
-  padding: var(--space-xs) 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  resize: vertical;
+  min-height: 52px;
+  padding: var(--md-space-2xs) var(--md-space-sm);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-sm);
   font-family: inherit;
-  box-sizing: border-box;
+  background: var(--md-surface-dim);
+  color: var(--md-text-primary);
+  resize: vertical;
+  transition: border-color var(--md-duration-fast) var(--md-ease-out),
+              box-shadow var(--md-duration-fast) var(--md-ease-out);
 }
-
 .promptTextarea:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -1px;
-  border-color: transparent;
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px var(--md-primary-container);
 }
 
 .saveRow {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  margin-top: var(--space-sm);
+  gap: var(--md-space-sm);
+  margin-top: var(--md-space-sm);
 }
 
 .btnSave {
-  padding: var(--space-2xs) 10px;
-  font-size: var(--font-size-sm);
+  height: var(--md-btn-height);
+  padding: 0 16px;
+  font-size: var(--md-btn-font-size);
+  font-weight: var(--md-btn-font-weight);
+  font-family: inherit;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--md-btn-radius);
   cursor: pointer;
-  color: #fff;
+  transition: var(--md-btn-transition);
+  background: var(--md-btn-fill-bg);
+  color: var(--md-btn-fill-color);
 }
-
-.btnSave:disabled {
-  cursor: not-allowed;
-}
-
-.btnSaveIdle {
-  background: var(--color-primary);
-}
-
-.btnSaveIdle:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
+.btnSave:hover:not(:disabled) { background: var(--md-btn-fill-hover); }
+.btnSave:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .saveSuccess {
-  font-size: var(--font-size-xs);
-  color: var(--color-success);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-success);
 }
-
 .saveError {
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-error);
 }
 
-/* 聊天列表 */
+/* ──────────────────────────────────────────────────────
+   聊天列表（ChatList）
+   ────────────────────────────────────────────────────── */
 .chatListSection {
-  border-top: 1px solid var(--color-border-light);
-  margin-top: var(--space-xs);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
 }
 
 .chatListHeader {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  margin: var(--space-sm) 0 var(--space-xs);
+  font-size: var(--md-font-size-sm);
+  font-weight: 600;
+  color: var(--md-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: var(--md-space-sm) var(--md-space-2xs) var(--md-space-2xs);
 }
 
 .chatRow {
   display: flex;
   align-items: center;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
+  border-radius: var(--md-radius-sm);
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+  position: relative;
 }
 
 .chatRowActive {
-  background: var(--color-bg-active);
+  background: var(--md-primary-container);
   font-weight: 500;
 }
 
@@ -188,134 +248,212 @@
   font-weight: 400;
 }
 
-.chatRow:hover {
-  background: var(--color-bg-hover);
-}
+.chatRow:hover { background: var(--md-surface-variant); }
+.chatRowActive:hover { background: var(--md-primary-container); }
 
 .chatLabel {
   flex: 1;
-  padding: 6px var(--space-sm);
+  padding: var(--md-space-xs) var(--md-space-sm);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--md-font-size-base);
 }
 
 .chatDeleteBtn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 6px;
-  font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--md-radius-full);
+  font-size: var(--md-font-size-md);
+  color: var(--md-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--md-duration-fast) var(--md-ease-out),
+              background var(--md-duration-fast) var(--md-ease-out);
+  flex-shrink: 0;
 }
+.chatRow:hover .chatDeleteBtn { opacity: 1; }
+.chatDeleteBtn:hover { background: var(--md-error-container); color: var(--md-error); }
 
-.chatDeleteBtn:hover {
-  background: var(--color-border-light);
+/* ── 聊天上下文菜单（...按钮） ── */
+.chatMenuBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--md-radius-full);
+  font-size: var(--md-font-size-md);
+  color: var(--md-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--md-duration-fast) var(--md-ease-out),
+              background var(--md-duration-fast) var(--md-ease-out);
+  flex-shrink: 0;
 }
+.chatRow:hover .chatMenuBtn { opacity: 1; }
+.chatMenuBtn:hover { background: var(--md-surface-variant); color: var(--md-text-primary); }
+
+.chatMenu {
+  position: absolute;
+  right: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
+  box-shadow: var(--md-shadow-md);
+  z-index: 10;
+  min-width: 100px;
+  padding: var(--md-space-2xs) 0;
+  display: none;
+}
+.chatMenu.open { display: block; }
+
+.chatMenuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--md-space-xs);
+  padding: var(--md-space-xs) var(--md-space-md);
+  font-size: var(--md-font-size-base);
+  color: var(--md-text-secondary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+  transition: background var(--md-duration-fast) var(--md-ease-out);
+}
+.chatMenuItem:hover { background: var(--md-surface-variant); }
+.chatMenuItemDanger { color: var(--md-error); }
+.chatMenuItemDanger:hover { background: var(--md-error-container); }
 
 .btnNewChat {
   width: 100%;
-  margin: var(--space-md) 0;
-  padding: 6px 14px;
-  background: var(--color-primary);
-  color: #fff;
+  padding: 0 16px;
+  height: var(--md-btn-height);
+  background: var(--md-btn-fill-bg);
+  color: var(--md-btn-fill-color);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--md-btn-radius);
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: var(--md-btn-font-size);
+  font-weight: var(--md-btn-font-weight);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
+  margin-bottom: var(--md-space-xs);
 }
+.btnNewChat:hover { background: var(--md-btn-fill-hover); }
 
-.btnNewChat:hover {
-  background: var(--color-primary-hover);
-}
-
-.btnBack {
-  background: none;
+/* ── 小型辅助按钮 ── */
+.btnSmall {
+  padding: 4px 12px;
+  height: 30px;
+  background: var(--md-surface-variant);
+  color: var(--md-text-primary);
   border: none;
-  color: var(--color-text-link);
+  border-radius: var(--md-radius-sm);
   cursor: pointer;
-  padding: 0;
-  font-size: var(--font-size-base);
+  font-size: var(--md-font-size-sm);
+  font-family: inherit;
+  transition: var(--md-btn-transition);
 }
+.btnSmall:hover { background: var(--md-outline); }
 
-.btnBack:hover {
-  text-decoration: underline;
-}
-
-/* ------- 右栏 ------- */
+/* ──────────────────────────────────────────────────────
+   右栏 - 聊天区域（ChatArea）
+   ────────────────────────────────────────────────────── */
 .chatArea {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: var(--space-md);
+  background: var(--md-surface);
+  min-width: 0;
 }
 
 .activeChatLabel {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-sm);
+  font-size: var(--md-font-size-sm);
+  color: var(--md-text-muted);
+  padding: var(--md-space-md) var(--md-space-xl) 0;
 }
 
 .messageList {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: var(--space-md);
+  padding: var(--md-space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-lg);
 }
 
 .message {
-  margin-bottom: var(--space-lg);
+  max-width: 780px;
 }
+.messageUser { align-self: flex-end; }
+.messageAssistant { align-self: flex-start; }
 
 .roleLabel {
   font-weight: 600;
-  font-size: var(--font-size-base);
-  margin-bottom: var(--space-xs);
+  font-size: var(--md-font-size-sm);
+  margin-bottom: var(--md-space-2xs);
 }
 
-.roleUser {
-  color: var(--color-primary);
-}
-
-.roleAssistant {
-  color: var(--color-success);
-}
+.roleUser { color: var(--md-text-secondary); text-align: right; }
+.roleAssistant { color: var(--md-primary); }
 
 .userContent {
-  font-size: var(--font-size-md);
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  padding: var(--md-space-sm) var(--md-space-md);
+  border-radius: var(--md-radius-xl);
+  border-bottom-right-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-md);
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .assistantContent {
-  font-size: var(--font-size-md);
+  background: var(--md-surface-dim);
+  border: 1px solid var(--md-outline);
+  padding: var(--md-space-sm) var(--md-space-md);
+  border-radius: var(--md-radius-xl);
+  border-bottom-left-radius: var(--md-radius-sm);
+  font-size: var(--md-font-size-md);
   line-height: 1.6;
 }
 
+/* ── 来源（旧，MarkdownMessage 接管后逐步废弃） ── */
 .sourcesDetails {
-  margin-top: var(--space-md);
-  font-size: var(--font-size-base);
-  color: var(--color-text-secondary);
+  margin-top: var(--md-space-sm);
+  font-size: var(--md-font-size-base);
+  color: var(--md-text-secondary);
 }
-
 .sourcesSummary {
   cursor: pointer;
   user-select: none;
+  font-size: var(--md-font-size-sm);
+  font-weight: 500;
 }
-
 .sourceItem {
-  margin-top: var(--space-sm);
-  padding: var(--space-sm);
-  background: var(--color-bg-source);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
+  margin-top: var(--md-space-2xs);
+  padding: var(--md-space-2xs) var(--md-space-sm);
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
 }
-
 .sourceScore {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-2xs);
+  font-size: var(--md-font-size-xs);
+  color: var(--md-text-muted);
+  margin-bottom: 2px;
 }
 
 .emptyMessages {
@@ -323,93 +461,77 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-muted);
+  color: var(--md-text-muted);
+  font-size: var(--md-font-size-md);
 }
 
-/* 对话状态指示器 */
 .statusLine {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--md-font-size-sm);
+  color: var(--md-text-muted);
   font-style: italic;
-  padding: 4px 0;
+  padding: var(--md-space-2xs) 0;
 }
 
-/* 输入区域 */
+/* ──────────────────────────────────────────────────────
+   输入区域（ChatInput）
+   ────────────────────────────────────────────────────── */
 .inputArea {
+  padding: var(--md-space-md) var(--md-space-xl);
+  border-top: 1px solid var(--md-outline);
+  background: var(--md-surface);
+}
+
+.inputContainer {
   display: flex;
-  gap: var(--space-sm);
-  border-top: 1px solid var(--color-border-light);
-  padding-top: var(--space-md);
+  align-items: flex-end;
+  gap: var(--md-space-sm);
+  background: var(--md-surface-dim);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-lg);
+  padding: 4px 4px 4px var(--md-space-md);
+  transition: border-color var(--md-duration-fast) var(--md-ease-out),
+              box-shadow var(--md-duration-fast) var(--md-ease-out);
+}
+
+.inputContainer:focus-within {
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px var(--md-primary-container);
 }
 
 .chatInput {
   flex: 1;
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-md);
-  resize: none;
+  border: none;
+  background: transparent;
+  padding: var(--md-space-sm) 0;
+  font-size: var(--md-font-size-md);
   font-family: inherit;
+  color: var(--md-text-primary);
+  resize: none;
+  min-height: 24px;
+  max-height: 120px;
+  line-height: 1.5;
 }
+.chatInput:focus { outline: none; }
+.chatInput::placeholder { color: var(--md-text-muted); }
 
-.chatInput:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -1px;
-  border-color: transparent;
-}
-
+/* ── 发送按钮（圆形） ── */
 .btnSend {
-  padding: var(--space-sm) 20px;
-  color: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--md-radius-full);
   border: none;
-  border-radius: var(--radius-lg);
+  background: var(--md-btn-fill-bg);
+  color: var(--md-btn-fill-color);
   cursor: pointer;
-  font-size: var(--font-size-md);
-  align-self: flex-end;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--md-duration-fast) var(--md-ease-out),
+              transform var(--md-duration-fast) var(--md-ease-out);
 }
-
-.btnSend:disabled {
-  cursor: not-allowed;
-}
-
-.btnSendIdle {
-  background: var(--color-primary);
-}
-
-.btnSendIdle:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.btnSendLoading {
-  background: #93c5fd;
-}
-
-/* 绑定 KB */
-.bindList {
-  margin: var(--space-sm) 0;
-}
-
-.bindItem {
-  padding: var(--space-xs) var(--space-sm);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-}
-
-.bindItem:hover {
-  background: var(--color-bg-hover);
-}
-
-.btnSmall {
-  padding: 4px 10px;
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-}
-
-.btnSmall:hover {
-  background: var(--color-border-light);
-}
+.btnSend:hover:not(:disabled) { background: var(--md-btn-fill-hover); transform: scale(1.05); }
+.btnSend:disabled { opacity: 0.5; cursor: not-allowed; }
+.btnSendIdle { background: var(--md-btn-fill-bg); color: var(--md-btn-fill-color); }
+.btnSendLoading { background: var(--md-primary-container); color: var(--md-text-muted); }

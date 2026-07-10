@@ -37,13 +37,11 @@ export default function SessionChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showBind, setShowBind] = useState(false);
   const [kbList, setKbList] = useState<KbItem[]>([]);
   const [topK, setTopK] = useState(8);
   const [topN, setTopN] = useState(5);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [showParams, setShowParams] = useState(true);
 
   // AbortController ref for SSE stream cancellation
   const abortRef = useRef<AbortController | null>(null);
@@ -53,7 +51,6 @@ export default function SessionChat() {
     try {
       const info = await sessionApi.get(name);
       setSessionInfo(info);
-      if (info.kb_name) setShowBind(false);
       const c = await sessionApi.listChats(name);
       setChats(c.chats);
     } catch (e) { console.error(e); }
@@ -85,7 +82,6 @@ export default function SessionChat() {
   const handleBind = async (kbName: string) => {
     if (!name) return;
     await sessionApi.bind(name, kbName);
-    setShowBind(false);
     load();
   };
 
@@ -171,65 +167,70 @@ export default function SessionChat() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    await sessionApi.chatStream(name, q, {
-      signal: controller.signal,
-      onToken: (token) => {
-        setMessages(prev => {
-          const msgs = [...prev];
-          const last = { ...msgs[msgs.length - 1] };
-          last.content += token;
-          msgs[msgs.length - 1] = last;
-          return msgs;
-        });
-      },
-      onSources: (sources) => {
-        setMessages(prev => {
-          const msgs = [...prev];
-          const last = { ...msgs[msgs.length - 1] };
-          last.sources = sources;
-          msgs[msgs.length - 1] = last;
-          return msgs;
-        });
-      },
-      onDone: (_chat_file) => {
-        abortRef.current = null;
-        setLoading(false);
-        load();
-      },
-      onError: (err: SessionStreamError) => {
-        abortRef.current = null;
-        const showErrorMessage = () => {
+    try {
+      await sessionApi.chatStream(name, q, {
+        signal: controller.signal,
+        onToken: (token) => {
           setMessages(prev => {
             const msgs = [...prev];
             const last = { ...msgs[msgs.length - 1] };
-            last.content = `❌ ${err.message}`;
+            last.content += token;
             msgs[msgs.length - 1] = last;
             return msgs;
           });
-        };
+        },
+        onSources: (sources) => {
+          setMessages(prev => {
+            const msgs = [...prev];
+            const last = { ...msgs[msgs.length - 1] };
+            last.sources = sources;
+            msgs[msgs.length - 1] = last;
+            return msgs;
+          });
+        },
+        onDone: (_chat_file) => {
+          abortRef.current = null;
+          setLoading(false);
+          load();
+        },
+        onError: (err: SessionStreamError) => {
+          abortRef.current = null;
+          const showErrorMessage = () => {
+            setMessages(prev => {
+              const msgs = [...prev];
+              const last = { ...msgs[msgs.length - 1] };
+              last.content = `❌ ${err.message}`;
+              msgs[msgs.length - 1] = last;
+              return msgs;
+            });
+          };
 
-        const isKbError = err.category === 'kb';
-        if (isKbError) {
+          const isKbError = err.category === 'kb';
+          if (isKbError) {
+            showErrorMessage();
+            setLoading(false);
+            load();
+            alert('⚠️ 知识库中还没有索引数据\n\n请先在知识库中上传并索引文件，然后再开始对话。');
+            return;
+          }
+
+          const isModelError = err.category === 'model' || err.code === 'MODEL_UNAVAILABLE';
+          if (isModelError) {
+            showErrorMessage();
+            setLoading(false);
+            load();
+            alert(`⚠️ 模型加载失败\n\n${err.message}`);
+            return;
+          }
           showErrorMessage();
           setLoading(false);
           load();
-          alert('⚠️ 知识库中还没有索引数据\n\n请先在知识库中上传并索引文件，然后再开始对话。');
-          return;
-        }
-
-        const isModelError = err.category === 'model' || err.code === 'MODEL_UNAVAILABLE';
-        if (isModelError) {
-          showErrorMessage();
-          setLoading(false);
-          load();
-          alert(`⚠️ 模型加载失败\n\n${err.message}`);
-          return;
-        }
-        showErrorMessage();
-        setLoading(false);
-        load();
-      },
-    }, chatFile);
+        },
+      }, chatFile);
+    } catch {
+      // 流被手动 abort（切换聊天或组件卸载），无需处理
+      setLoading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -263,7 +264,6 @@ export default function SessionChat() {
   const handleShowBind = async () => {
     const list = await kbApi.list();
     setKbList(list);
-    setShowBind(true);
   };
 
   if (!name) return null;
@@ -276,15 +276,14 @@ export default function SessionChat() {
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
         onNewChat={handleNewChat}
-        showBind={showBind} kbList={kbList}
+        kbList={kbList}
         onBind={handleBind} onShowBind={handleShowBind}
         topK={topK} topN={topN} systemPrompt={systemPrompt}
-        saveStatus={saveStatus} showParams={showParams}
+        saveStatus={saveStatus}
         onTopKChange={v => { setTopK(v); setSaveStatus('idle'); }}
         onTopNChange={v => { setTopN(v); setSaveStatus('idle'); }}
         onSystemPromptChange={v => { setSystemPrompt(v); setSaveStatus('idle'); }}
         onSaveConfig={handleSaveConfig}
-        onToggleParams={() => setShowParams(p => !p)}
       />
 
       <ChatArea

@@ -1,39 +1,58 @@
 @import '../styles/tokens.css';
 
+/* ── 导航栏容器 ── */
 .nav {
   display: flex;
-  gap: 0;
-  border-bottom: 2px solid var(--color-border-light);
-  background: var(--color-bg-nav);
-  padding: 0 var(--space-lg);
+  align-items: center;
+  justify-content: center;
+  height: var(--md-nav-height);
+  background: var(--md-surface);
+  border-bottom: 1px solid var(--md-outline);
+  padding: 0 var(--md-space-xl);
+  gap: var(--md-space-xs);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-.tab {
-  padding: var(--space-md) var(--space-xl);
-  border: none;
-  cursor: pointer;
+/* ── Logo（绝对定位在左侧，不影响 tabs 居中） ── */
+.logo {
+  position: absolute;
+  left: var(--md-space-xl);
+  font-weight: 700;
   font-size: 15px;
-  font-weight: 400;
-  color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  color: var(--md-primary);
+  letter-spacing: -0.01em;
+  user-select: none;
+}
+
+/* ── Pill 标签 ── */
+.tab,
+.tabActive {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-space-2xs);
+  height: var(--md-nav-pill-height);
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--md-radius-full);
+  cursor: pointer;
+  font-size: var(--md-font-size-md);
+  font-family: inherit;
+  transition: all 200ms var(--md-ease-out);
+  white-space: nowrap;
   background: transparent;
-  transition: color 0.15s, border-color 0.15s;
+  color: var(--md-text-secondary);
+  user-select: none;
 }
 
 .tab:hover {
-  color: var(--color-primary);
+  background: var(--md-surface-variant);
 }
 
-.tab:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-  border-radius: var(--radius-sm);
-}
-
+/* ── 活跃 Pill ── */
 .tabActive {
-  composes: tab;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
   font-weight: 600;
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
 }

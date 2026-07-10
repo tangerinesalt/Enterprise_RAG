@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from threading import Lock, RLock
@@ -327,6 +328,11 @@ class SessionManager:
         """
         Stream chat generator.
 
+        三段式生命周期：
+          1) 预准备（持锁）：准备 chat、写入用户消息 → 立即释放锁
+          2) 检索生成（无锁）：ChromaDB/LLM，可被 GeneratorExit 随时中断
+          3) 持久化（持锁）：写入助手回复/错误 → 释放锁 → 输出 done/error
+
         Yields SSE event dicts:
             {"type": "start",   "chat_file": "..."}
             {"type": "token",   "token": "..."}
@@ -335,109 +341,116 @@ class SessionManager:
             {"type": "error",   "message": "..."}
         """
         started_at = time.monotonic()
-        chat_file = self._ensure_chat_target(name, query, chat_file)
+        rid = uuid.uuid4().hex[:12]
+
+        try:
+            chat_file = self._ensure_chat_target(name, query, chat_file)
+        except Exception as exc:
+            logger.error("chat_stream rid=%s phase=0-init-error session=%s err=%s", rid, name, exc)
+            yield {"type": "error", "code": "RUNTIME_ERROR", "category": "runtime", "message": str(exc)}
+            return
+
+        logger.debug("chat_stream rid=%s phase=1-prepare session=%s chat=%s", rid, name, chat_file)
+
+        # ── 阶段 1：预准备（持锁） ──
         with self._chat_file_lock(name, chat_file):
-            chat_path = None
-            store = None
+            config, chat_file, chat_path, store = self._prepare_chat_turn(name, query, chat_file)
+        # 锁已释放
+
+        yield {"type": "start", "chat_file": chat_file}
+
+        # ── 阶段 2：检索 & 生成（无锁，可随时被 GeneratorExit 中断） ──
+        error = None
+        answer = None
+        sources = None
+        try:
+            kb_name = config.get("kb_name")
+            if not kb_name:
+                raise SessionError(f"会话 '{name}' 未绑定知识库")
+            if not _kb.exists(kb_name):
+                raise SessionError(f"知识库 '{kb_name}' 不存在")
+
+            logger.debug("chat_stream rid=%s phase=2-retrieval kb=%s", rid, kb_name)
+
+            db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
             try:
-                config, chat_file, chat_path, store = self._prepare_chat_turn(name, query, chat_file)
+                chroma_collection = db.get_collection("kb_index")
+            except Exception:
+                raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据，请先在知识库中索引文件")
 
-                yield {"type": "start", "chat_file": chat_file}
+            if chroma_collection.count() == 0:
+                raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
 
-                kb_name = config.get("kb_name")
-                if not kb_name:
-                    raise SessionError(f"会话 '{name}' 未绑定知识库")
-                if not _kb.exists(kb_name):
-                    raise SessionError(f"知识库 '{kb_name}' 不存在")
+            _ensure_models_initialized()
 
-                db = chromadb.PersistentClient(path=_kb.vector_db_path(kb_name))
-                try:
-                    chroma_collection = db.get_collection("kb_index")
-                except Exception:
-                    raise SessionError(f"知识库 '{kb_name}' 中未找到索引数据，请先在知识库中索引文件")
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+            index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+            top_k = config.get("top_k", self.DEFAULT_TOP_K)
+            top_n = config.get("top_n", self.DEFAULT_TOP_N)
+            retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
 
-                if chroma_collection.count() == 0:
-                    raise SessionError(f"知识库 '{kb_name}' 中没有向量数据，请先在知识库中索引文件")
+            logger.debug(
+                "query | stream start rid=%s session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s", rid,
+                name, kb_name, top_k, top_n, retriever_mode, chat_file, query,
+            )
 
-                _ensure_models_initialized()
+            reranker = _get_reranker(top_n=top_n)
+            score_filter = SimilarityPostprocessor(similarity_cutoff=0.1)
+            retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
+            system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
+            query_engine = RetrieverQueryEngine.from_args(
+                retriever=retriever,
+                node_postprocessors=[reranker, score_filter],
+                text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
+                streaming=True,
+            )
+            logger.debug("chat_stream rid=%s phase=2-generation llm_call_start", rid)
+            response = query_engine.query(query)
+            logger.debug("chat_stream rid=%s phase=2-generation llm_call_done", rid)
 
-                vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-                index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
-                top_k = config.get("top_k", self.DEFAULT_TOP_K)
-                top_n = config.get("top_n", self.DEFAULT_TOP_N)
-                retriever_mode = config.get("retriever_mode", self.DEFAULT_RETRIEVER_MODE)
+            answer_buf = []
+            for chunk in response.response_gen:
+                if chunk:
+                    answer_buf.append(chunk)
+                    yield {"type": "token", "token": chunk}
 
-                logger.debug(
-                    "query | stream start session=%s kb=%s top_k=%d top_n=%d mode=%s chat=%s query=%s",
-                    name,
-                    kb_name,
-                    top_k,
-                    top_n,
-                    retriever_mode,
-                    chat_file,
-                    query,
-                )
+            answer = "".join(answer_buf)
+            sources = self._extract_sources(response)
+            hint = self._build_retrieval_hint(sources, top_k=top_k, top_n=top_n)
+            if hint:
+                answer += hint
+                yield {"type": "token", "token": hint}
 
-                # 重新排序
-                reranker = _get_reranker(top_n=top_n)
-                # 过滤低相似度结果
-                score_filter = SimilarityPostprocessor(similarity_cutoff=0.1)
-                retriever = build_retriever(index, kb_name, top_k=top_k, mode=retriever_mode)
-                system_prompt = self._normalize_system_prompt(config.get("system_prompt", ""))
-                query_engine = RetrieverQueryEngine.from_args(
-                    retriever=retriever,
-                    node_postprocessors=[reranker, score_filter],
-                    text_qa_template=PromptTemplate(system_prompt) if system_prompt else None,
-                    streaming=True,
-                )
-                response = query_engine.query(query)
+        except GeneratorExit:
+            logger.debug("chat_stream rid=%s phase=2-aborted session=%s chat=%s", rid, name, chat_file)
+            raise
 
-                answer_buf = []
-                for chunk in response.response_gen:
-                    if chunk:
-                        answer_buf.append(chunk)
-                        yield {"type": "token", "token": chunk}
+        except Exception as exc:
+            elapsed = time.monotonic() - started_at
+            error = self._build_stream_error(exc)
+            log_fn = logger.debug if isinstance(exc, SessionError) else logger.error
+            log_fn("query | stream error rid=%s session=%s elapsed=%.2fs err=%s", rid, name, elapsed, error["message"])
 
-                answer = "".join(answer_buf)
-                sources = self._extract_sources(response)
-                hint = self._build_retrieval_hint(sources, top_k=top_k, top_n=top_n)
-                if hint:
-                    answer += hint
-                    yield {"type": "token", "token": hint}
-
-                store.add_message(
-                    name,
-                    self._build_assistant_message(answer, sources),
-                )
+        # ── 阶段 3：持久化（持锁） ──
+        logger.debug("chat_stream rid=%s phase=3-persist session=%s chat=%s", rid, name, chat_file)
+        with self._chat_file_lock(name, chat_file):
+            if error is not None:
+                self._append_assistant_error(store, name, chat_path, error["message"])
+            else:
+                store.add_message(name, self._build_assistant_message(answer, sources))
                 store.persist(chat_path)
 
-                elapsed = time.monotonic() - started_at
-                ans_preview = answer[:100].replace("\n", " ")
-                source_scores = [s["score"] for s in sources if s["score"] is not None]
-                score_summary = ""
-                if source_scores:
-                    score_summary = f" score_min={min(source_scores):.4f} score_max={max(source_scores):.4f}"
-                logger.debug(
-                    "query | stream done session=%s sources=%d elapsed=%.2fs ans_len=%d%s chat=%s ans_pfx=%s",
-                    name,
-                    len(sources),
-                    elapsed,
-                    len(answer),
-                    score_summary,
-                    chat_file,
-                    ans_preview,
-                )
-
-                yield {"type": "sources", "sources": sources}
-                yield {"type": "done", "chat_file": chat_file}
-            except Exception as exc:
-                elapsed = time.monotonic() - started_at
-                error = self._build_stream_error(exc)
-                log_fn = logger.debug if isinstance(exc, SessionError) else logger.error
-                log_fn("query | stream error session=%s elapsed=%.2fs err=%s", name, elapsed, error["message"])
-                if store is not None and chat_path is not None:
-                    self._append_assistant_error(store, name, chat_path, error["message"])
-                yield {"type": "error", **error}
+        if error is not None:
+            yield {"type": "error", **error}
+        else:
+            elapsed = time.monotonic() - started_at
+            ans_preview = answer[:100].replace("\n", " ")
+            logger.debug(
+                "query | stream done rid=%s session=%s sources=%d elapsed=%.2fs ans_len=%d chat=%s ans_pfx=%s", rid,
+                name, len(sources), elapsed, len(answer), chat_file, ans_preview,
+            )
+            yield {"type": "sources", "sources": sources}
+            yield {"type": "done", "chat_file": chat_file}
 
     def chat(self, name: str, query: str, chat_file: str = None) -> dict:
         started_at = time.monotonic()

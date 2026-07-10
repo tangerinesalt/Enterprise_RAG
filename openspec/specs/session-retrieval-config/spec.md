@@ -1,4 +1,32 @@
-## ADDED Requirements
+## Requirements
+
+### Requirement: User SHALL view and edit retrieval params in UI
+
+The left column SHALL display a combined "retrieval params" card below the KB selector, showing `top_k`, `top_n`, and system prompt with a single save button.
+
+#### Scenario: Display combined config card
+- **WHEN** user views the session chat page
+- **THEN** the left column shows a card containing `top_k` and `top_n` number inputs, a system prompt textarea, and a "save all config" button
+
+#### Scenario: Edit and save all params
+- **WHEN** user changes `top_k`, `top_n` or system prompt and clicks "save all config"
+- **THEN** `PATCH /api/session/{name}/config` is called with all three values (`top_k`, `top_n`, `system_prompt`)
+- **THEN** on success, a brief "saved" confirmation appears
+- **THEN** on error, an error message is shown
+
+#### Scenario: Validate params on save
+- **WHEN** user enters 0 or negative values for `top_k` or `top_n` and clicks save
+- **THEN** the save is rejected with a validation message "top_k must be >= 1"
+- **THEN** the inputs are NOT sent to the API
+
+### Requirement: System prompt SHALL be saved with retrieval params
+
+The system prompt textarea SHALL be part of the same card as retrieval params, and saved via the same save action.
+
+#### Scenario: Save system prompt
+- **WHEN** user edits the system prompt textarea and clicks "save all config"
+- **THEN** the prompt is included in the PATCH request as `system_prompt`
+- **THEN** on success, the saved prompt persists on reload
 
 ### Requirement: Session SHALL persist retrieval parameters in config
 

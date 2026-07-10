@@ -29,7 +29,7 @@ export default function KbList() {
   };
 
   return (
-    <div>
+    <div className="page">
       <div className={styles.header}>
         <h2 className={styles.title}>知识库</h2>
         <button onClick={() => setShowCreate(true)} className={styles.btnPrimary}>+ 新建</button>

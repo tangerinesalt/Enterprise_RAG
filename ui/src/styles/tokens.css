@@ -1,8 +1,118 @@
-/* Design tokens — 全局设计系统原料 */
-/* 所有组件通过 var(--token-name) 引用，禁止硬编码值 */
+/* ── 设计令牌 ──────────────────────────────────────── */
+/* M3 (Material Design 3) 风格语义化变量体系          */
+/* 所有组件通过 var(--md-*) 引用，禁止硬编码值         */
+/* 旧版 --color-* / --font-size-* / --space-* 保留    */
+/* 用于迁移过渡，新代码使用 --md-*                    */
 
 :root {
-  /* ── 主色调 ── */
+  /* ═══════════════════════════════════════════════════
+     新版 M3 风格令牌
+     ═══════════════════════════════════════════════════ */
+
+  /* ── 主色 ── */
+  --md-primary: #2563eb;
+  --md-on-primary: #fff;
+  --md-primary-container: #dbeafe;
+  --md-primary-hover: #1d4ed8;
+
+  /* ── 辅助色 ── */
+  --md-secondary: #7c3aed;
+  --md-secondary-container: #f5f3ff;
+
+  /* ── 点缀色 ── */
+  --md-tertiary: #0d9488;
+  --md-tertiary-container: #f0fdfa;
+
+  /* ── 语义色 ── */
+  --md-error: #dc2626;
+  --md-error-container: #fef2f2;
+  --md-success: #059669;
+  --md-success-container: #f0fdf4;
+
+  /* ── 表面 / 轮廓 ── */
+  --md-surface: #fff;
+  --md-surface-dim: #f8fafc;
+  --md-surface-variant: #f1f5f9;
+  --md-outline: #e2e8f0;
+  --md-outline-variant: #cbd5e1;
+
+  /* ── 文本 ── */
+  --md-text-primary: #0f172a;
+  --md-text-secondary: #475569;
+  --md-text-muted: #94a3b8;
+
+  /* ── 圆角 ── */
+  --md-radius-xs: 6px;
+  --md-radius-sm: 8px;
+  --md-radius-md: 12px;
+  --md-radius-lg: 16px;
+  --md-radius-xl: 20px;
+  --md-radius-full: 9999px;
+
+  /* ── 阴影 ── */
+  --md-shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+  --md-shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+  --md-shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 5px 15px rgba(0,0,0,0.05);
+  --md-shadow-lg: 0 10px 25px rgba(0,0,0,0.05), 0 20px 40px rgba(0,0,0,0.08);
+
+  /* ── 间距（8px 网格） ── */
+  --md-space-2xs: 4px;
+  --md-space-xs: 8px;
+  --md-space-sm: 12px;
+  --md-space-md: 16px;
+  --md-space-lg: 20px;
+  --md-space-xl: 24px;
+  --md-space-2xl: 32px;
+
+  /* ── 过渡动画 ── */
+  --md-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --md-duration-fast: 150ms;
+  --md-duration-normal: 250ms;
+  --md-duration-slow: 400ms;
+
+  /* ── 字体 ── */
+  --md-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --md-font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --md-font-size-xs: 11px;
+  --md-font-size-sm: 12px;
+  --md-font-size-base: 13px;
+  --md-font-size-md: 14px;
+  --md-font-size-lg: 16px;
+  --md-font-size-xl: 18px;
+
+  /* ── 基础按钮令牌 ── */
+  --md-btn-height: 36px;
+  --md-btn-padding: 0 16px;
+  --md-btn-radius: var(--md-radius-sm);
+  --md-btn-font-size: 13px;
+  --md-btn-font-weight: 500;
+  --md-btn-transition: all 150ms var(--md-ease-out);
+
+  /* fill 按钮 */
+  --md-btn-fill-bg: var(--md-primary);
+  --md-btn-fill-color: var(--md-on-primary);
+  --md-btn-fill-hover: var(--md-primary-hover);
+
+  /* tonal 按钮 */
+  --md-btn-tonal-bg: var(--md-primary-container);
+  --md-btn-tonal-color: var(--md-primary);
+
+  /* text 按钮 */
+  --md-btn-text-color: var(--md-primary);
+  --md-btn-text-hover: var(--md-primary-container);
+
+  /* outlined 按钮 */
+  --md-btn-outlined-border: var(--md-outline);
+  --md-btn-outlined-hover: var(--md-surface-variant);
+
+  /* 导航栏 */
+  --md-nav-height: 56px;
+  --md-nav-pill-height: 36px;
+
+  /* ═══════════════════════════════════════════════════
+     旧版令牌（保留用于迁移过渡）
+     ═══════════════════════════════════════════════════ */
+
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-active: #1e40af;
@@ -11,17 +121,14 @@
   --color-danger-hover: #b91c1c;
   --color-success: #059669;
 
-  /* ── 文本色 ── */
   --color-text: #1f2937;
   --color-text-secondary: #6b7280;
   --color-text-muted: #9ca3af;
   --color-text-link: var(--color-primary);
 
-  /* ── 边框色 ── */
   --color-border: #d1d5db;
   --color-border-light: #e5e7eb;
 
-  /* ── 背景色 ── */
   --color-bg: #fff;
   --color-bg-hover: #f3f4f6;
   --color-bg-active: #eff6ff;
@@ -30,7 +137,6 @@
   --color-bg-inline-code: #f3f4f6;
   --color-bg-source: #f9fafb;
 
-  /* ── 字号 ── */
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-base: 13px;
@@ -38,7 +144,6 @@
   --font-size-lg: 16px;
   --font-size-xl: 18px;
 
-  /* ── 间距 ── */
   --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
@@ -46,13 +151,11 @@
   --space-lg: 16px;
   --space-xl: 24px;
 
-  /* ── 圆角 ── */
   --radius-sm: 3px;
   --radius-md: 4px;
   --radius-lg: 6px;
   --radius-xl: 8px;
 
-  /* ── 阴影（预留） ── */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
