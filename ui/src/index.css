@@ -8,7 +8,9 @@ body {
   font-size: var(--md-font-size-md);
   line-height: 1.6;
   color: var(--md-text-primary);
-  background: var(--md-surface-dim);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(37, 99, 235, 0.055), transparent 28%),
+    linear-gradient(180deg, #fbfcfe 0%, var(--md-surface-dim) 38%);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -29,13 +31,15 @@ a:hover { text-decoration: underline; }
 /* 主内容区域布局（App.tsx <main>） */
 /* padding 由各页面自行控制（SessionChat 需要撑满，列表页需要 padding） */
 .app-main {
-  max-width: 1440px;
+  max-width: none;
   margin: 0 auto;
 }
 
 /* 列表页通用容器 */
 .page {
-  padding: var(--md-space-xl);
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 28px var(--md-space-xl) 40px;
 }
 
 /* 滚动条美化 */

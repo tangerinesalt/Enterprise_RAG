@@ -134,3 +134,51 @@
   border-color: var(--md-primary);
   box-shadow: 0 0 0 3px var(--md-primary-container);
 }
+
+/* Modern list surface */
+.header {
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.list {
+  gap: 10px;
+}
+
+.row {
+  min-height: 58px;
+  padding: 0 var(--md-space-md);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.035);
+}
+
+.row:hover {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  border-color: var(--md-outline-variant);
+}
+
+.btnPrimary {
+  background: var(--md-surface);
+  color: var(--md-primary);
+  border: 1px solid var(--md-outline);
+  border-radius: 13px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.btnPrimary:hover {
+  background: var(--md-primary-container);
+}
+
+.btnSec {
+  border-radius: 13px;
+}
+
+.input {
+  border-radius: 13px;
+  background: var(--md-surface);
+}

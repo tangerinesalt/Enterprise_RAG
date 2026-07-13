@@ -8,17 +8,14 @@ import type { ChatFile, KbItem, SessionItem } from '../api';
 interface Props {
   name: string;
   sessionInfo: SessionItem | null;
-  // chat list
   chats: ChatFile[];
   activeChat: string | null;
   onSelectChat: (file: string) => void;
   onDeleteChat: (file: string) => void;
   onNewChat: () => void;
-  // bind KB
   kbList: KbItem[];
   onBind: (kbName: string) => void;
   onShowBind: () => void;
-  // params
   topK: number;
   topN: number;
   systemPrompt: string;
@@ -40,7 +37,6 @@ export default function SessionSidebar({
   const [showKbDropdown, setShowKbDropdown] = useState(false);
   const kbRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭 KB 下拉
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (kbRef.current && !kbRef.current.contains(e.target as Node)) {
@@ -63,73 +59,44 @@ export default function SessionSidebar({
 
   return (
     <div className={styles.sidebar}>
-      <button onClick={() => navigate('/session')} className={styles.btnBack}>← 返回</button>
+      <button onClick={() => navigate('/session')} className={styles.btnBack}>← 返回会话列表</button>
       <h3 className={styles.sessionTitle}>{name}</h3>
 
-      {/* 知识库选择器 */}
-      <div ref={kbRef} style={{ position: 'relative' }}>
-        <div
+      <div ref={kbRef} className={styles.kbPickerWrap}>
+        <button
+          type="button"
           onClick={handleKbClick}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 12px', borderRadius: 'var(--md-radius-sm)',
-            border: '1px solid var(--md-outline)',
-            cursor: 'pointer', fontSize: 13,
-            transition: 'border-color 150ms',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--md-primary)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--md-outline)'; }}
+          className={styles.kbPicker}
         >
-          <span>📚</span>
-          <span style={{ flex: 1 }}>{sessionInfo?.kb_name || '未绑定知识库'}</span>
-          <span style={{ fontSize: 10, color: 'var(--md-text-muted)' }}>▾</span>
-        </div>
+          <span className={styles.kbPickerIcon}>📁</span>
+          <span className={styles.kbPickerName}>{sessionInfo?.kb_name || '未绑定知识库'}</span>
+          <span className={styles.kbPickerChevron}>⌄</span>
+        </button>
 
         {showKbDropdown && (
-          <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-            marginTop: 4,
-            background: 'var(--md-surface)',
-            border: '1px solid var(--md-outline)',
-            borderRadius: 'var(--md-radius-sm)',
-            boxShadow: 'var(--md-shadow-md)',
-            overflow: 'hidden',
-          }}>
+          <div className={styles.kbDropdown}>
             {kbList.length === 0 && (
-              <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--md-text-muted)' }}>
+              <div className={styles.kbDropdownEmpty}>
                 暂无知识库，请先创建
               </div>
             )}
             {kbList.map(kb => (
-              <div
+              <button
+                type="button"
                 key={kb.name}
                 onClick={() => handleKbSelect(kb.name)}
-                style={{
-                  padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                  background: sessionInfo?.kb_name === kb.name ? 'var(--md-primary-container)' : 'transparent',
-                  fontWeight: sessionInfo?.kb_name === kb.name ? 500 : 400,
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--md-surface-variant)'; }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    sessionInfo?.kb_name === kb.name ? 'var(--md-primary-container)' : 'transparent';
-                }}
+                className={`${styles.kbDropdownItem} ${sessionInfo?.kb_name === kb.name ? styles.kbDropdownItemActive : ''}`}
               >
                 📁 {kb.name}
-              </div>
+              </button>
             ))}
-            <div
+            <button
+              type="button"
               onClick={() => { navigate('/kb'); setShowKbDropdown(false); }}
-              style={{
-                padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                borderTop: '1px solid var(--md-outline)',
-                color: 'var(--md-primary)',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--md-surface-variant)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              className={styles.kbCreateItem}
             >
-              ＋ 创建新知识库
-            </div>
+              + 创建新知识库
+            </button>
           </div>
         )}
       </div>

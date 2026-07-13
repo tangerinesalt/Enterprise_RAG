@@ -71,7 +71,7 @@
   --md-duration-slow: 400ms;
 
   /* ── 字体 ── */
-  --md-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --md-font-sans: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
   --md-font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
   --md-font-size-xs: 11px;
   --md-font-size-sm: 12px;
@@ -106,7 +106,7 @@
   --md-btn-outlined-hover: var(--md-surface-variant);
 
   /* 导航栏 */
-  --md-nav-height: 56px;
+  --md-nav-height: 64px;
   --md-nav-pill-height: 36px;
 
   /* ═══════════════════════════════════════════════════

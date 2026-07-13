@@ -6,7 +6,6 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './MarkdownMessage.module.css';
 
-// Only load common languages to keep bundle small
 const SUPPORTED_LANGUAGES = ['python', 'javascript', 'js', 'typescript', 'ts', 'bash', 'sh', 'json', 'sql', 'yaml', 'yml', 'markdown', 'md', 'text', 'powershell', 'ps1', 'dockerfile', 'diff', 'xml', 'html', 'css'];
 
 interface SourceItem {
@@ -46,7 +45,9 @@ export default function MarkdownMessage({ content, sources }: Props) {
                       onClick={() => copyToClipboard(codeStr)}
                       className={styles.copyBtn}
                       title="复制代码"
-                    >📋</button>
+                    >
+                      复制
+                    </button>
                   </div>
                   <SyntaxHighlighter
                     style={oneLight}
@@ -120,8 +121,8 @@ export default function MarkdownMessage({ content, sources }: Props) {
             className={styles.sourcesTitle}
             onClick={() => setSourcesOpen(!sourcesOpen)}
           >
-            <span className={`${styles.sourceArrow} ${sourcesOpen ? styles.open : ''}`}>▸</span>
-            📎 来源 ({sources.length})
+            <span className={`${styles.sourceArrow} ${sourcesOpen ? styles.open : ''}`}>›</span>
+            来源 ({sources.length})
           </div>
           {sourcesOpen && (
             <div className={styles.sourceBody}>

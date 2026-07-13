@@ -13,9 +13,6 @@ export default function NavBar() {
 
   return (
     <nav className={styles.nav}>
-      <div className={styles.navLeft}>
-        <span className={styles.logo}>rag_v</span>
-      </div>
       <div className={styles.navCenter}>
         {tabs.map(tab => (
           <button

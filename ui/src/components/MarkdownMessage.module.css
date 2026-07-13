@@ -118,15 +118,15 @@
 
 /* ── 来源折叠 ── */
 .sourcesSection {
-  margin-top: var(--md-space-md);
-  padding-top: var(--md-space-md);
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--md-outline);
 }
 
 .sourcesTitle {
   font-size: var(--md-font-size-sm);
   font-weight: 500;
-  color: var(--md-text-secondary);
+  color: var(--md-text-muted);
   cursor: pointer;
   user-select: none;
   display: inline-flex;
@@ -155,7 +155,7 @@
   gap: var(--md-space-sm);
   padding: var(--md-space-xs) var(--md-space-sm);
   margin-bottom: var(--md-space-2xs);
-  background: var(--md-surface-dim);
+  background: var(--md-surface);
   border-radius: var(--md-radius-sm);
   font-size: var(--md-font-size-base);
   line-height: 1.5;

@@ -14,7 +14,6 @@ export default function ChatList({ chats, activeChat, onSelect, onDelete, onNewC
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭菜单
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -32,40 +31,43 @@ export default function ChatList({ chats, activeChat, onSelect, onDelete, onNewC
 
   return (
     <div className={styles.chatListSection}>
-      <button onClick={onNewChat} className={styles.btnNewChat}>＋ 新聊天</button>
+      <button onClick={onNewChat} className={styles.btnNewChat}>+ 新聊天</button>
       <div className={styles.chatListHeader}>历史对话</div>
-      {chats.map(c => (
-        <div
-          key={c.file}
-          className={`${styles.chatRow} ${activeChat === c.file ? styles.chatRowActive : styles.chatRowInactive}`}
-        >
+      <div className={styles.historyList}>
+        {chats.map(c => (
           <div
-            onClick={() => onSelect(c.file)}
-            className={styles.chatLabel}
+            key={c.file}
+            className={`${styles.chatRow} ${activeChat === c.file ? styles.chatRowActive : styles.chatRowInactive}`}
           >
-            {c.preview || c.file}
-          </div>
-          <button
-            onClick={e => {
-              e.stopPropagation();
-              setMenuOpen(menuOpen === c.file ? null : c.file);
-            }}
-            className={styles.chatMenuBtn}
-            title="更多"
-          >⋯</button>
+            <button
+              type="button"
+              onClick={() => onSelect(c.file)}
+              className={styles.chatLabel}
+            >
+              {c.preview || c.file}
+            </button>
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                setMenuOpen(menuOpen === c.file ? null : c.file);
+              }}
+              className={styles.chatMenuBtn}
+              title="更多"
+            >⋯</button>
 
-          {menuOpen === c.file && (
-            <div className={`${styles.chatMenu} ${styles.open}`} ref={menuRef}>
-              <button
-                className={`${styles.chatMenuItem} ${styles.chatMenuItemDanger}`}
-                onClick={() => handleDelete(c.file)}
-              >
-                🗑️ 删除
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+            {menuOpen === c.file && (
+              <div className={`${styles.chatMenu} ${styles.open}`} ref={menuRef}>
+                <button
+                  className={`${styles.chatMenuItem} ${styles.chatMenuItemDanger}`}
+                  onClick={() => handleDelete(c.file)}
+                >
+                  删除
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

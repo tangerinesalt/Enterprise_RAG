@@ -232,3 +232,51 @@
   color: var(--md-text-muted);
   text-align: center;
 }
+
+/* Modern knowledge-base detail surface */
+.backLink {
+  color: var(--md-text-muted);
+}
+
+.backLink:hover {
+  background: var(--md-surface-variant);
+  color: var(--md-text-primary);
+}
+
+.title {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.actions {
+  margin-bottom: 20px;
+}
+
+.row {
+  min-height: 62px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.035);
+}
+
+.row:hover {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  border-color: var(--md-outline-variant);
+}
+
+.btnPrimary {
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  border-radius: 13px;
+}
+
+.btnPrimary:hover {
+  background: #d7e6ff;
+}
+
+.btnSec,
+.btnSmall,
+.btnIndexing,
+.btnIndexed {
+  border-radius: 13px;
+}
