@@ -1,24 +1,30 @@
 @import '../styles/tokens.css';
 
-/* ── 导航栏容器 ── */
+/* ── BeerCSS Navigation Tabbed 风格 ── */
+/* 容器有浅色背景（surface-variant），tab pill 在里面"浮"着 */
+
 .nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: var(--md-nav-height);
-  background: var(--md-surface);
-  border-bottom: 1px solid var(--md-outline);
-  padding: 0 var(--md-space-xl);
-  gap: var(--md-space-xs);
+  height: 60px;
+  background: var(--md-surface-variant);
+  padding: 0 8px;
   position: sticky;
   top: 0;
   z-index: 100;
+  /* 无 border-bottom — 背景本身界定导航区 */
 }
 
-/* ── Logo（绝对定位在左侧，不影响 tabs 居中） ── */
-.logo {
+/* ── Logo 居左 ── */
+.navLeft {
   position: absolute;
-  left: var(--md-space-xl);
+  left: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.logo {
   font-weight: 700;
   font-size: 15px;
   color: var(--md-primary);
@@ -26,14 +32,21 @@
   user-select: none;
 }
 
+/* ── 中心 tab 容器 ── */
+.navCenter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ── Pill 标签 ── */
 .tab,
 .tabActive {
   display: inline-flex;
   align-items: center;
-  gap: var(--md-space-2xs);
-  height: var(--md-nav-pill-height);
-  padding: 0 20px;
+  gap: 6px;
+  height: 44px;
+  padding: 0 22px;
   border: none;
   border-radius: var(--md-radius-full);
   cursor: pointer;
@@ -44,15 +57,32 @@
   background: transparent;
   color: var(--md-text-secondary);
   user-select: none;
+  line-height: 1;
 }
 
 .tab:hover {
-  background: var(--md-surface-variant);
+  background: rgba(255, 255, 255, 0.6);
 }
 
-/* ── 活跃 Pill ── */
+/* ── 活跃 Pill（BeerCSS: primary-container fill + primary text） ── */
 .tabActive {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: var(--md-primary-container);
+  color: var(--md-primary);
   font-weight: 600;
+}
+
+/* ── Icon ── */
+.navIcon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* ── 响应式：小屏时缩小文字 ── */
+@media (max-width: 480px) {
+  .tab, .tabActive {
+    padding: 0 14px;
+    font-size: var(--md-font-size-sm);
+    height: 40px;
+  }
+  .navLeft { display: none; } /* 小屏隐藏 logo */
 }

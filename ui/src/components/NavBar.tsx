@@ -2,8 +2,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import styles from './NavBar.module.css';
 
 const tabs = [
-  { path: '/kb', label: '📁 知识库' },
-  { path: '/session', label: '💬 会话' },
+  { path: '/kb', icon: '📁', label: '知识库' },
+  { path: '/session', icon: '💬', label: '会话' },
 ];
 
 export default function NavBar() {
@@ -13,16 +13,21 @@ export default function NavBar() {
 
   return (
     <nav className={styles.nav}>
-      <span className={styles.logo}>rag_v</span>
-      {tabs.map(tab => (
-        <button
-          key={tab.path}
-          onClick={() => navigate(tab.path)}
-          className={current === tab.path ? styles.tabActive : styles.tab}
-        >
-          {tab.label}
-        </button>
-      ))}
+      <div className={styles.navLeft}>
+        <span className={styles.logo}>rag_v</span>
+      </div>
+      <div className={styles.navCenter}>
+        {tabs.map(tab => (
+          <button
+            key={tab.path}
+            onClick={() => navigate(tab.path)}
+            className={current === tab.path ? styles.tabActive : styles.tab}
+          >
+            <span className={styles.navIcon}>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
     </nav>
   );
 }

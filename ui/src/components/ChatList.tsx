@@ -27,9 +27,7 @@ export default function ChatList({ chats, activeChat, onSelect, onDelete, onNewC
 
   const handleDelete = (file: string) => {
     setMenuOpen(null);
-    if (confirm(`确定删除聊天「${file}」？`)) {
-      onDelete(file);
-    }
+    onDelete(file);
   };
 
   return (
