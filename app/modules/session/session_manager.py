@@ -168,7 +168,6 @@ class SessionManager:
                 name,
                 {
                     "kb_name": None,
-                    "active_chat": None,
                     "top_k": self.DEFAULT_TOP_K,
                     "top_n": self.DEFAULT_TOP_N,
                     "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
@@ -190,8 +189,6 @@ class SessionManager:
                     os.remove(chat_path)
 
                 config = self._load_config(name)
-                if config.get("active_chat") == chat_file:
-                    config["active_chat"] = None
                 previews = dict(config.get("chat_previews", {}))
                 previews.pop(chat_file, None)
                 config["chat_previews"] = previews
@@ -231,7 +228,6 @@ class SessionManager:
         return {
             "name": name,
             "kb_name": config.get("kb_name"),
-            "active_chat": config.get("active_chat"),
             "top_k": config.get("top_k", self.DEFAULT_TOP_K),
             "top_n": config.get("top_n", self.DEFAULT_TOP_N),
             "system_prompt": config.get("system_prompt", self.DEFAULT_SYSTEM_PROMPT),
@@ -255,7 +251,6 @@ class SessionManager:
                 {
                     "name": entry,
                     "kb_name": config.get("kb_name"),
-                    "active_chat": config.get("active_chat"),
                     "total_chats": total_chats,
                 }
             )
@@ -269,7 +264,6 @@ class SessionManager:
 
         with self._session_config_lock(name):
             config = self._load_config(name)
-            active = config.get("active_chat")
             previews = dict(config.get("chat_previews", {}))
 
         result = []
@@ -278,7 +272,6 @@ class SessionManager:
                 result.append(
                     {
                         "file": filename,
-                        "is_active": filename == active,
                         "preview": previews.get(filename),
                     }
                 )
@@ -289,17 +282,6 @@ class SessionManager:
             self._ensure_exists(name)
             config = self._load_config(name)
             return self._create_chat_file_locked(name, config)
-
-    def select_chat(self, name: str, chat_file: str):
-        with self._session_config_lock(name):
-            self._ensure_exists(name)
-            chat_file = self._normalize_chat_file(chat_file)
-            chat_path = self.chat_path(name, chat_file)
-            if not os.path.isfile(chat_path):
-                raise SessionError(f"聊天文件 '{chat_file}' 不存在")
-            config = self._load_config(name)
-            config["active_chat"] = chat_file
-            self._save_config(name, config)
 
     def get_messages(self, name: str, chat_file: str) -> list[dict]:
         self._ensure_exists(name)
@@ -629,7 +611,6 @@ class SessionManager:
         filename = self._gen_chat_filename(name)
         store = SimpleChatStore()
         store.persist(self.chat_path(name, filename))
-        config["active_chat"] = filename
         self._save_config(name, config)
         return filename
 
@@ -705,7 +686,6 @@ class SessionManager:
         if not os.path.isfile(path):
             return {
                 "kb_name": None,
-                "active_chat": None,
                 "top_k": self.DEFAULT_TOP_K,
                 "top_n": self.DEFAULT_TOP_N,
                 "retriever_mode": self.DEFAULT_RETRIEVER_MODE,
@@ -716,6 +696,7 @@ class SessionManager:
         with open(path, "r", encoding="utf-8") as handle:
             cfg = json.load(handle)
 
+        cfg.pop("active_chat", None)
         if "top_k" not in cfg:
             cfg["top_k"] = self.DEFAULT_TOP_K
         if "top_n" not in cfg:
@@ -729,7 +710,9 @@ class SessionManager:
         return cfg
 
     def _save_config(self, name: str, data: dict):
-        self._save_config_file(self.config_path(name), data)
+        cleaned = dict(data)
+        cleaned.pop("active_chat", None)
+        self._save_config_file(self.config_path(name), cleaned)
 
     def _save_config_file(self, config_path: str, data: dict):
         config_dir = os.path.dirname(config_path)

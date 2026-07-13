@@ -37,11 +37,13 @@ The left column SHALL show session info, KB binding, retrieval parameter editing
 - **THEN** a new chat file is created via `POST /api/session/new`
 - **THEN** the page locally selects the returned chat file
 - **THEN** a blank chat area appears on the right
+- **THEN** no request is sent to `/api/session/select`
 
 #### Scenario: Switch chat
 - **WHEN** user clicks a different chat in the left column list
 - **THEN** the page updates its local selected `chat_file`
 - **THEN** the right column loads and displays that chat's messages
+- **THEN** no request is sent to `/api/session/select`
 
 #### Scenario: Two pages keep different local selections
 - **WHEN** page A selects `chat-a.json`

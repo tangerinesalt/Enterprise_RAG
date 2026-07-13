@@ -757,8 +757,8 @@
 /* Preview parity: shell proportions and sidebar */
 .wrapper {
   width: min(100% - 44px, 1180px);
-  height: calc(100vh - var(--md-nav-height) - 28px);
-  min-height: 850px;
+  height: calc(100vh - var(--md-nav-height) - 0px);
+  min-height: 720px;
   margin: 28px auto 0;
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
@@ -1100,8 +1100,8 @@
 /* Exact preview alignment: proportions, rhythm, typography */
 .wrapper {
   width: min(100%, 1180px);
-  height: calc(100vh - 64px - 28px);
-  min-height: 850px;
+  height: calc(100vh - 64px - 0px);
+  min-height: 720px;
   margin: 0 auto;
   padding: 28px 22px 40px;
   display: grid;

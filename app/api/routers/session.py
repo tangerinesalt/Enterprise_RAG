@@ -11,7 +11,6 @@ from app.api.schemas import (
     SessionConfigUpdateRequest,
     SessionCreateRequest,
     SessionNewChatRequest,
-    SessionSelectChatRequest,
 )
 from app.modules.session import SessionError, SessionManager, SessionPathError
 
@@ -77,15 +76,6 @@ def new_chat(body: SessionNewChatRequest):
     try:
         filename = _session.new_chat(body.name)
         return _ok({"name": body.name, "chat_file": filename})
-    except SessionError as exc:
-        return _err(str(exc), _session_error_status(exc, 400))
-
-
-@router.post("/select")
-def select_chat(body: SessionSelectChatRequest):
-    try:
-        _session.select_chat(body.name, body.chat_file)
-        return _ok({"name": body.name, "chat_file": body.chat_file})
     except SessionError as exc:
         return _err(str(exc), _session_error_status(exc, 400))
 

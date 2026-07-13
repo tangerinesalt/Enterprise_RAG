@@ -39,10 +39,6 @@ class SessionBindRequest(BaseModel):
 class SessionNewChatRequest(BaseModel):
     name: str
 
-class SessionSelectChatRequest(BaseModel):
-    name: str
-    chat_file: str
-
 class SessionChatRequest(BaseModel):
     name: str
     query: str

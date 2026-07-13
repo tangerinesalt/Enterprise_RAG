@@ -9,7 +9,6 @@ CLI — 会话与聊天管理子命令。
     python -m app.cli session list [name] [chat_file]
     python -m app.cli session info <name>
     python -m app.cli session new <name>
-    python -m app.cli session select <name> <chat_file>
     python -m app.cli session delete <name> [chat_file]
 """
 
@@ -63,7 +62,6 @@ def cmd_info(args):
         print(f"\n会话: {info['name']}")
         print(f"{'='*40}")
         print(f"  绑定的知识库: {info['kb_name'] or '(未绑定)'}")
-        print(f"  当前聊天:     {info['active_chat'] or '(无)'}")
         print(f"  聊天总数:     {info['total_chats']}")
     except SessionError as e:
         print(f"[ERROR] {e}")
@@ -95,8 +93,7 @@ def cmd_list(args):
             print(f"\n会话 '{args.name}' 的聊天记录:")
             print(f"{'='*50}")
             for c in chats:
-                marker = "* " if c["is_active"] else "  "
-                print(f"  {marker}{c['file']:40s}")
+                print(f"  {c['file']:40s}")
         else:
             sessions = _session.list_all()
             if not sessions:
@@ -106,8 +103,7 @@ def cmd_list(args):
             print(f"{'='*50}")
             for s in sessions:
                 kb = s['kb_name'] or '(未绑定)'
-                active = s['active_chat'] or '(无)'
-                print(f"  {s['name']:30s} KB: {kb:15s} 聊天: {active}")
+                print(f"  {s['name']:30s} KB: {kb:15s} chats: {s['total_chats']}")
             print(f"{'='*50}")
             print(f"共 {len(sessions)} 个会话")
     except SessionError as e:
@@ -123,14 +119,6 @@ def cmd_new(args):
         print(f"[ERROR] {e}")
         sys.exit(1)
 
-
-def cmd_select(args):
-    try:
-        _session.select_chat(args.name, args.chat_file)
-        print(f"[OK] 已切换到聊天: {args.chat_file}")
-    except SessionError as e:
-        print(f"[ERROR] {e}")
-        sys.exit(1)
 
 
 def cmd_config(args):
@@ -157,7 +145,6 @@ def cmd_config(args):
         print(f"  top_k: {cfg.get('top_k', '(未设置)')}")
         print(f"  top_n: {cfg.get('top_n', '(未设置)')}")
         print(f"  kb_name: {cfg.get('kb_name') or '(未绑定)'}")
-        print(f"  active_chat: {cfg.get('active_chat') or '(无)'}")
         sp = cfg.get("system_prompt", "")
         if sp:
             print(f"  system_prompt: {sp[:50]}...")
@@ -204,7 +191,6 @@ def main():
   session list my-session                     列出会话的聊天文件
   session list my-session 2026_06_25.json     查看聊天消息内容
   session new my-session                      在会话中新建一条聊天
-  session select my-session 2026_06_25.json   切换到指定聊天
   session delete my-session                   删除整个会话
   session delete my-session 2026_06_25.json   删除单条聊天
   session chat my-session "问题"              自动新建聊天并提问
@@ -241,11 +227,6 @@ def main():
     p = sub.add_parser("new", help="在会话中创建一条新的聊天记录")
     p.add_argument("name", help="会话名称")
     p.set_defaults(func=cmd_new)
-
-    p = sub.add_parser("select", help="切换到某条历史聊天（设为当前）")
-    p.add_argument("name", help="会话名称")
-    p.add_argument("chat_file", help="聊天文件名（如 2026_06_25_09_30.json）")
-    p.set_defaults(func=cmd_select)
 
     p = sub.add_parser("config", help="查看或修改会话检索参数 top_k / top_n")
     p.add_argument("name", help="会话名称")

@@ -167,13 +167,13 @@ def test_same_session_same_chat_file_remains_serialized(tmp_path, monkeypatch):
     ]
 
 
-def test_explicit_chat_file_is_stable_while_active_chat_metadata_changes(tmp_path, monkeypatch):
+def test_explicit_chat_file_is_stable_while_unrelated_config_updates(tmp_path, monkeypatch):
     manager = _make_manager(tmp_path, monkeypatch)
     _patch_chat_dependencies(tmp_path, monkeypatch)
 
     entered_chat_a = threading.Event()
     allow_chat_a = threading.Event()
-    metadata_updated = threading.Event()
+    config_updated = threading.Event()
     errors: list[Exception] = []
 
     class _Engine:
@@ -201,25 +201,25 @@ def test_explicit_chat_file_is_stable_while_active_chat_metadata_changes(tmp_pat
         except Exception as exc:  # pragma: no cover
             errors.append(exc)
 
-    def update_metadata():
+    def update_config():
         try:
-            manager.select_chat("demo", chat_b)
-            metadata_updated.set()
+            manager.update_config("demo", top_k=42)
+            config_updated.set()
         except Exception as exc:  # pragma: no cover
             errors.append(exc)
 
     worker = threading.Thread(target=run_chat_a, name="chat-a")
-    updater = threading.Thread(target=update_metadata, name="metadata-updater")
+    updater = threading.Thread(target=update_config, name="config-updater")
     worker.start()
     assert entered_chat_a.wait(1), "chat_a did not enter query stage"
 
     updater.start()
-    assert metadata_updated.wait(0.5), "active_chat metadata update was blocked by unrelated explicit chat"
+    assert config_updated.wait(0.5), "config update was blocked by unrelated explicit chat"
     allow_chat_a.set()
     worker.join()
     updater.join()
 
     assert errors == []
-    assert manager.get_config("demo")["active_chat"] == chat_b
+    assert manager.get_config("demo")["top_k"] == 42
     assert [m["content"] for m in manager.get_messages("demo", chat_a)] == ["q-a", "answer-q-a"]
     assert manager.get_messages("demo", chat_b) == []

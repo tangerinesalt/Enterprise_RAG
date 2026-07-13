@@ -42,15 +42,15 @@ The system SHALL serialize mutation operations targeting the same `chat_file`.
 - **THEN** the file remains valid JSON
 - **THEN** persisted messages do NOT interleave into a corrupted or lost-update state
 
-### Requirement: Shared active_chat metadata SHALL NOT gate explicit chat execution
+### Requirement: Explicit chat targets SHALL remain stable under unrelated session-config writes
 
-The system SHALL treat `active_chat` as metadata only and SHALL NOT use it to block or redirect a request that explicitly specifies `chat_file`.
+The system SHALL preserve an explicit `chat_file` target even when other operations mutate unrelated session config during the request lifetime.
 
-#### Scenario: active_chat changes during another page's request
-- **WHEN** page A is chatting on `chat-a.json`
-- **AND** page B changes session metadata so `active_chat` becomes `chat-b.json`
-- **THEN** page A's in-flight or subsequent explicit requests for `chat-a.json` continue to use `chat-a.json`
-- **THEN** they are NOT redirected, cancelled, or blocked by the metadata change
+#### Scenario: Update config during explicit chat request
+- **WHEN** page A sends a chat request for `chat-a.json`
+- **AND** another operation updates retrieval config for the same session while page A is still in progress
+- **THEN** page A continues to read from and persist to `chat-a.json`
+- **THEN** the config write does NOT redirect, cancel, or retarget the explicit chat request
 
 ### Requirement: Streaming requests SHALL include a traceable request_id
 
@@ -70,4 +70,3 @@ If the global LLM client (httpx/requests session) is shared across streaming req
 - **WHEN** two streaming LLM requests are sent concurrently through the same client
 - **THEN** each stream receives only its own response data
 - **THEN** one stream's completion does not interrupt the other
-

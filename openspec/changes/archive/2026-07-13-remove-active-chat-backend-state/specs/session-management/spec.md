@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define requirements for creating, listing, and binding sessions, as well as viewing session metadata and retrieval parameters.
-## Requirements
 ### Requirement: User SHALL create a session by name
 
 The system SHALL create a new session directory with a config file containing only supported persisted session defaults for retrieval and chat preview behavior.
@@ -17,23 +15,6 @@ The system SHALL create a new session directory with a config file containing on
 #### Scenario: Create duplicate session
 - **WHEN** user runs `session create my-session` and it already exists
 - **THEN** system prints "Session 'my-session' already exists"
-
-### Requirement: User SHALL bind a knowledge base to a session
-
-The system SHALL save the knowledge base name into the session's config file.
-
-#### Scenario: Bind an existing KB
-- **WHEN** user runs `python -m app.modules.kb_manager.cli session bind my-session my-docs`
-- **THEN** `sessions/my-session/config.json` is updated with `kb_name: "my-docs"`
-- **THEN** system prints "Session 'my-session' bound to knowledge base 'my-docs'"
-
-#### Scenario: Bind to non-existent KB
-- **WHEN** user runs `session bind my-session unknown-kb` and the KB doesn't exist
-- **THEN** system prints "Knowledge base 'unknown-kb' not found"
-
-#### Scenario: Bind non-existent session
-- **WHEN** user runs `session bind unknown-session my-docs`
-- **THEN** system prints "Session 'unknown-session' not found"
 
 ### Requirement: User SHALL list sessions and chats
 
@@ -57,6 +38,14 @@ The system SHALL return session info including retrieval parameters and supporte
 - **WHEN** user runs `session info my-session` or `GET /api/session/my-session`
 - **THEN** the response includes `"top_k"` and `"top_n"` values
 - **THEN** the response does NOT include `active_chat`
+
+## REMOVED Requirements
+
+### Requirement: Session SHALL treat active_chat as recent-selection metadata
+**Reason**: The system no longer persists or exposes any backend-selected-chat metadata.
+**Migration**: Clients and operators MUST rely on explicit `chat_file` and frontend-local selection state instead of `active_chat`.
+
+## ADDED Requirements
 
 ### Requirement: Session config SHALL tolerate legacy `active_chat` during migration
 

@@ -1,8 +1,5 @@
-# session-storage-safety Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change harden-chat-reliability-and-safety. Update Purpose after archive.
-## Requirements
 ### Requirement: Session storage SHALL serialize writes per session
 
 The system SHALL serialize config-file writes and chat-file writes within the same session so that concurrent operations do not silently overwrite each other's updates.

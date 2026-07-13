@@ -94,8 +94,6 @@ export default function SessionChat() {
     }
     setMessages([]);
     setActiveChat(chatFile);
-    if (!name) return;
-    sessionApi.selectChat(name, chatFile).catch(console.error);
   };
 
   const handleNewChat = async () => {
@@ -257,7 +255,6 @@ export default function SessionChat() {
       const nextChat = remaining.length > 0 ? remaining[0].file : null;
       setMessages([]);
       setActiveChat(nextChat);
-      if (nextChat) sessionApi.selectChat(name, nextChat).catch(console.error);
     }
   };
 

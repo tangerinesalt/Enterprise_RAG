@@ -95,7 +95,7 @@ def test_chat_persists_question_and_precheck_error_for_existing_new_chat(tmp_pat
     ]
 
 
-def test_same_session_concurrent_writes_preserve_active_chat_and_config(tmp_path, monkeypatch):
+def test_same_session_concurrent_writes_preserve_config_and_omit_removed_active_chat(tmp_path, monkeypatch):
     manager = _make_manager(tmp_path, monkeypatch)
     manager.create("demo")
 
@@ -158,11 +158,28 @@ def test_same_session_concurrent_writes_preserve_active_chat_and_config(tmp_path
 
     config = manager.get_config("demo")
     chat_file = chat_file_box["chat_file"]
+    persisted = json.loads(Path(manager.config_path("demo")).read_text(encoding="utf-8"))
 
     assert config["top_k"] == 99
-    assert config["active_chat"] == chat_file
-    assert json.loads(Path(manager.config_path("demo")).read_text(encoding="utf-8"))["active_chat"] == chat_file
+    assert "active_chat" not in config
+    assert persisted["top_k"] == 99
+    assert "active_chat" not in persisted
     assert json.loads(Path(manager.chats_dir("demo"), chat_file).read_text(encoding="utf-8"))
+
+
+def test_legacy_active_chat_is_removed_on_config_rewrite(tmp_path, monkeypatch):
+    manager = _make_manager(tmp_path, monkeypatch)
+    manager.create("demo")
+
+    legacy = manager.get_config("demo")
+    legacy["active_chat"] = "legacy.json"
+    Path(manager.config_path("demo")).write_text(json.dumps(legacy), encoding="utf-8")
+
+    manager.update_config("demo", top_k=77)
+
+    rewritten = json.loads(Path(manager.config_path("demo")).read_text(encoding="utf-8"))
+    assert rewritten["top_k"] == 77
+    assert "active_chat" not in rewritten
 
 
 def test_create_sets_default_system_prompt_with_parameter_and_context_guidance(tmp_path, monkeypatch):

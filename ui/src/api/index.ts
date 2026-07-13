@@ -159,7 +159,6 @@ export const kbApi = {
 export interface SessionItem {
   name: string;
   kb_name: string | null;
-  active_chat: string | null;
   top_k?: number;
   top_n?: number;
   system_prompt?: string;
@@ -168,7 +167,6 @@ export interface SessionItem {
 
 export interface ChatFile {
   file: string;
-  is_active: boolean;
   preview?: string;
 }
 
@@ -195,9 +193,6 @@ export const sessionApi = {
   }),
   newChat: (name: string) => req<{ name: string; chat_file: string }>('/session/new', {
     method: 'POST', body: JSON.stringify({ name }),
-  }),
-  selectChat: (name: string, chat_file: string) => req('/session/select', {
-    method: 'POST', body: JSON.stringify({ name, chat_file }),
   }),
   chat: (name: string, query: string, chat_file?: string) =>
     req<{ answer: string; sources: SourceItem[]; chat_file: string }>('/session/chat', {
